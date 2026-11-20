@@ -89,7 +89,7 @@ final class BlockersUITests: XCTestCase {
         app.buttons["Progress"].tap()
         XCTAssertTrue(element("4 of 11 closed · 2 in the last 3 h").waitForExistence(timeout: 10))
         XCTAssertTrue(element("worked by engineers 3 · writing or review only 1").exists)
-        app.buttons["Panes"].tap() // Progress is a screen of the bottom bar: back to Panes
+        app.buttons["Pinned"].tap() // Progress is a screen of the bottom bar: back to Pinned
         XCTAssertTrue(element("eng6 on the app").waitForExistence(timeout: 5), "the Panes key did not bring the list back")
     }
 

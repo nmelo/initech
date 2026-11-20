@@ -84,9 +84,9 @@ test draws:
 
 | Screen | What it shows | Test |
 |---|---|---|
-| `home` | the Panes list with five pins | `InitechAppUITests/ScreenshotTests` |
+| `home` | the Pinned list with five pins | `InitechAppUITests/ScreenshotTests` |
 | `pane` | a pane at a dialog, a sent message and a pressed key | `InitechAppUITests/ScreenshotTests` |
-| `panes` | the Panes list with its bottom bar | `InitechAppTests/ScreenshotTests` |
+| `panes` | the Pinned list with its bottom bar | `InitechAppTests/ScreenshotTests` |
 | `blockers` | the Blockers list, one row of each kind | `InitechAppTests/ScreenshotTests` |
 | `progress` | the Progress list, one effort | `InitechAppTests/ScreenshotTests` |
 
@@ -200,10 +200,11 @@ first.
 - `InitechApp/Theme.swift`: the app's look, a terminal's: near-black, monospaced, one red for what can be
   pressed, a colour per pane state. Screens take their colours and type from here.
 - `InitechApp/HomeModel.swift`, `HomeView.swift`: the list side. It draws its own prompt header and a bottom bar
-  of four keys, one per screen (`ListTab`): Panes, Rigs, Blockers, Progress. Panes ends with the build line:
+  of four keys, one per screen (`ListTab`): Pinned, Rigs, Blockers, Progress. Pinned ends with the build line:
   version, build, commit. No screen opens as a sheet.
 - `InitechApp/RigsView.swift`: Rigs. Every rig's header always shows; scrolling opens one rig at a time
-  (`InitechCore/.../RigStack.swift` is the arithmetic), and a row slides left to pin or unpin.
+  (`InitechCore/.../RigStack.swift` is the arithmetic), and a row slides left to pin or unpin. On iPad, tapping
+  a row opens that pane beside the list, pinned or not.
 - `InitechApp/BlockersView.swift`, `ProgressView.swift`, `OperatorScreens.swift`: Blockers (rigs with nothing to
   say share one line) and Progress.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation, under its own header with the way

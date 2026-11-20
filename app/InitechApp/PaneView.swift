@@ -169,7 +169,7 @@ struct PaneView: View {
 
 extension PaneView {
     /// header is the pane's prompt line. Stacked over the list (iPhone) it
-    /// starts with the way back, "‹ panes"; beside the list (iPad) the list is
+    /// starts with the way back, "‹ pinned"; beside the list (iPad) the list is
     /// already there. Under it, the pane's state and where it runs; at the right,
     /// its context.
     var header: some View {
@@ -178,7 +178,7 @@ extension PaneView {
                 HStack(spacing: 0) {
                     if sizeClass == .compact {
                         Button { home.selection = nil } label: {
-                            Text("‹ panes").foregroundStyle(Theme.red)
+                            Text("‹ pinned").foregroundStyle(Theme.red)
                                 .padding(.vertical, 8).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)

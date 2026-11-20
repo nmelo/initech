@@ -100,7 +100,7 @@ final class PaneFlowUITests: XCTestCase {
             pin.tap()
             XCTAssertTrue(pin.waitForNonExistence(timeout: 10), "\(pane) stayed unpinned in Rigs")
         }
-        app.buttons["Panes"].tap() // Rigs is a screen of the bottom bar, not a sheet: back to the list
+        app.buttons["Pinned"].tap() // Rigs is a screen of the bottom bar, not a sheet: back to the list
     }
 
     private func rename(_ from: String, to: String) {
@@ -304,7 +304,7 @@ final class PaneFlowUITests: XCTestCase {
             XCTAssertTrue(app.staticTexts["the other pane"].waitForExistence(timeout: 10), "the other pane did not open")
             XCTAssertFalse(entry(120).exists, "paneA did not leave")
         } else {
-            app.buttons["BackButton"].tap() // the pane's own way back, "‹ panes"
+            app.buttons["BackButton"].tap() // the pane's own way back, "‹ pinned"
         }
         XCTAssertTrue(row(paneA).waitForExistence(timeout: 10))
         assertNotEditingTheList()
@@ -399,6 +399,22 @@ final class PaneFlowUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 2)
         XCTAssertEqual(reorder.count, 0, "the list stayed in edit mode")
         try assertStillReading("after Done")
+    }
+
+    /// On iPad, tapping a row in Rigs opens that pane beside the list, though it is not pinned.
+    func testIPadRigs_TappingARowOpensThatPane_PinnedOrNot() throws {
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .pad, "the list and the pane share the screen only on iPad")
+        try XCTSkipIf(server == nil, "fixture only")
+        launch()
+        unpinAll()
+        XCTAssertTrue(app.staticTexts["Pick a pane"].waitForExistence(timeout: 10), "a pane was open before the tap: the test would show nothing")
+        app.buttons["Rigs"].tap()
+        let line = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "\(paneA) · ")).firstMatch
+        XCTAssertTrue(line.waitForExistence(timeout: 10), "Rigs does not list \(paneA)")
+        line.tap()
+        XCTAssertTrue(entry(120).waitForExistence(timeout: 15), "tapping an unpinned row in Rigs did not open its conversation")
+        XCTAssertFalse(app.staticTexts["Pick a pane"].exists, "the pane side still asks to pick a pane")
+        XCTAssertTrue(app.buttons["Pin \(paneA)"].exists || line.exists, "the list left Rigs")
     }
 
     /// A conversation shorter than a screen never shows the line.

@@ -10,6 +10,9 @@ import UIKit
 /// to that rig.
 struct RigsAccordion: View {
     @ObservedObject var home: HomeModel
+    /// besideThePane is true on iPad, where the list sits beside the open pane:
+    /// there, tapping a row opens that pane's conversation, pinned or not.
+    var besideThePane = false
     @ScaledMetric(relativeTo: .body) private var headerHeight: CGFloat = 46
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 62
     /// scroll is how far the screen is scrolled; viewport the height it shows.
@@ -17,7 +20,7 @@ struct RigsAccordion: View {
     @State private var viewport: CGFloat = 0
     @State private var position = ScrollPosition(edge: .top)
     /// openRow is the one row slid open to show its key, if any.
-    @State private var openRow: PaneRef?
+    @State var openRow: PaneRef?
 
     var body: some View {
         let rigs = home.rigPanes
@@ -127,13 +130,36 @@ struct RigsAccordion: View {
                         }
                     }
                     .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: rowHeight)
+                    .background(shown(pane.row.ref) ? Theme.bar : Theme.bg)
+                    .overlay(alignment: .leading) {
+                        if shown(pane.row.ref) { Rectangle().fill(Theme.red).frame(width: 3) }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { tapped(pane.row.ref) }
                     .accessibilityValue(pane.pinned ? "pinned" : "")
+                    .accessibilityAddTraits(besideThePane ? .isButton : [])
                 }
                 .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1).padding(.leading, 20) }
             }
         }
         .background(Theme.bg)
+    }
+}
+
+extension RigsAccordion {
+    /// shown is true for the row whose pane is open beside the list.
+    func shown(_ ref: PaneRef) -> Bool { besideThePane && home.selection == ref }
+
+    /// tapped closes a row left slid open; otherwise, beside the pane, it opens
+    /// that row's conversation, pinned or not.
+    func tapped(_ ref: PaneRef) {
+        if openRow != nil {
+            withAnimation(.snappy) { openRow = nil }
+        } else if besideThePane {
+            home.open(ref)
+        }
     }
 }
 

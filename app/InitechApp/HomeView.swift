@@ -10,7 +10,7 @@ struct MainView: View {
     @ObservedObject var inbox: PushInbox
     let forget: () -> Void
     /// tab is the screen the list side shows, chosen in its bottom bar.
-    @State private var tab: ListTab = .panes
+    @State private var tab: ListTab = .pinned
     @State private var blockersFocus: BlockerFocus?
     /// opened is false until home's first reload, before which a tap that
     /// opened the app cannot tell a running pane from a gone one.
@@ -34,6 +34,7 @@ struct MainView: View {
                 ZStack {
                     Theme.bg.ignoresSafeArea()
                     Text("❯ pick a pane").font(Theme.mono(.body)).foregroundStyle(Theme.dim)
+                        .accessibilityLabel("Pick a pane")
                 }
             }
         }
@@ -79,10 +80,10 @@ extension MainView {
         inbox.tapped = nil
         switch route {
         case .home:
-            tab = .panes
+            tab = .pinned
             home.selection = nil
         case .pane(let ref):
-            tab = .panes
+            tab = .pinned
             if !home.hasPane(ref) { await home.reload() }
             if home.hasPane(ref) {
                 home.open(ref)
@@ -114,7 +115,7 @@ extension MainView {
 /// ListTab is a screen of the list side's bottom bar; its name is what the
 /// prompt header shows.
 enum ListTab: String, Equatable {
-    case panes, rigs, blockers, progress
+    case pinned, rigs, blockers, progress
 }
 
 /// HomeList is the list side of the app, drawn as a terminal would: a prompt
@@ -137,7 +138,7 @@ struct HomeList: View {
     var body: some View {
         Group {
             switch tab {
-            case .panes: panesList
+            case .pinned: panesList
             case .rigs: rigsList
             case .blockers: BlockersScreen(home: home, focus: blockersFocus, arrived: inbox.arrived)
             case .progress: ProgressScreen(home: home)
@@ -200,7 +201,7 @@ struct HomeList: View {
 
     /// rigsList is the Rigs screen (RigsAccordion). It is a screen of the bottom
     /// bar, like Panes, not a sheet over it.
-    private var rigsList: some View { RigsAccordion(home: home) }
+    private var rigsList: some View { RigsAccordion(home: home, besideThePane: besideThePane) }
 
     /// header is the prompt line: where he is, and edit on Panes.
     private var header: some View {
@@ -210,7 +211,7 @@ struct HomeList: View {
             Rectangle().fill(Theme.red).frame(width: 9, height: 17).padding(.leading, 6)
                 .accessibilityHidden(true)
             Spacer()
-            if tab == .panes {
+            if tab == .pinned {
                 Button(editMode.isEditing ? "done" : "edit") {
                     withAnimation { editMode = editMode.isEditing ? .inactive : .active }
                 }
@@ -249,7 +250,7 @@ struct HomeList: View {
     /// list, never over it.
     private var keys: some View {
         HStack(spacing: 0) {
-            key(.panes, "1 panes", spoken: "Panes")
+            key(.pinned, "1 pinned", spoken: "Pinned")
             Spacer()
             key(.rigs, "2 rigs", spoken: "Rigs")
             Spacer()
