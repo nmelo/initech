@@ -172,8 +172,7 @@ func verdictSend(p *Pane, text string, enter bool, o sendOrigin) ControlResp {
 
 // onRemoteAgentEvent is the connected initech's side: a report from a serve
 // daemon becomes the same AgentEvent a local agent's would be, named
-// host:agent, and goes through the same event path (toast, event log, the
-// inbox step). A report for an agent this window does not know, or of a type
+// host:agent, and goes through the same event path (toast and event log). A report for an agent this window does not know, or of a type
 // it does not know, is logged and dropped.
 func (t *TUI) onRemoteAgentEvent(peer string, ev ControlResp) {
 	typ, ok := agentEventTypeFromWire(ev.EventType)

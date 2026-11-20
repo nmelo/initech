@@ -69,11 +69,6 @@ func TestRetryDialog_NoSecondEnterIntoADialog(t *testing.T) {
 	if !strings.Contains(logs.String(), "submit retry withheld: dialog open") {
 		t.Error("the withheld resend left no log line")
 	}
-	// Criterion 3: the inbox entry is derived from the same event and keeps
-	// the reason (the toast and the event log show the event as it is).
-	if r := inboxEventReason(ev.Detail); !strings.Contains(r, "dialog open at the retry") {
-		t.Errorf("inbox reason %q, want it to name the dialog", r)
-	}
 }
 
 // Criterion 2, the positive twin: the same pane with no dialog gets its one

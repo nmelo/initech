@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -129,44 +128,6 @@ func TestStripBook_EveryChangeIsOnDisk(t *testing.T) {
 		wg.Wait()
 		if got := loadStripBook(path, wmT0).all(); len(got) != 8 {
 			t.Fatalf("rep %d: eight changes at once left %d on disk", rep, len(got))
-		}
-	}
-}
-
-// The inbox through its API: posts from many goroutines at once all reach
-// the file, numbered without a gap.
-func TestInbox_PostsAtOnceAreAllOnDisk(t *testing.T) {
-	for rep := 0; rep < 50; rep++ {
-		root := t.TempDir()
-		ib, err := LoadInbox(root, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		start := make(chan struct{})
-		var wg sync.WaitGroup
-		for i := 0; i < 8; i++ {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				<-start
-				if _, err := ib.Post(InboxItem{Agent: "eng2", Body: fmt.Sprintf("post %d", i)}, ""); err != nil {
-					t.Error(err)
-				}
-			}(i)
-		}
-		close(start)
-		wg.Wait()
-		again, err := LoadInbox(root, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var ids []string
-		for _, it := range again.Items() {
-			ids = append(ids, it.ID)
-		}
-		sort.Strings(ids)
-		if len(ids) != 8 {
-			t.Fatalf("rep %d: eight posts at once left %d on disk: %v", rep, len(ids), ids)
 		}
 	}
 }

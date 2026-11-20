@@ -25,14 +25,6 @@ func (t *TUI) handlePaste(start bool) {
 		return
 	}
 
-	// The inbox panel takes the paste into its reply line (ini-qmbi): before
-	// this, modalActive() did not list the inbox, so a paste made while the
-	// panel was open was flushed to the FOCUSED PANE -- the operator's reply
-	// typed into the agent's terminal behind the panel.
-	if t.inbox.active {
-		t.appendInboxPaste(string(t.pasteBuf))
-		return
-	}
 	// A paste dismisses the welcome and goes on to the focused pane whole, as a
 	// key does (ini-foft): the welcome is a hint, not a question.
 	if t.welcome.active {
@@ -89,7 +81,6 @@ func (t *TUI) modalActive() bool {
 		t.eventLogM.active ||
 		t.top.active ||
 		t.agents.active ||
-		t.inbox.active ||
 		t.quickGrid.active ||
 		t.cmd.active
 }

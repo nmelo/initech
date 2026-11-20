@@ -29,7 +29,7 @@ type CronListing struct {
 }
 
 // cronCaller is the agent behind conn: worked out from the connection, the way
-// initech post is attributed, never from what the request says about itself.
+// initech watch and strip are, never from what the request says about itself.
 func (t *TUI) cronCaller(conn net.Conn) (string, error) {
 	if t.sched.identify != nil {
 		return t.sched.identify(conn)

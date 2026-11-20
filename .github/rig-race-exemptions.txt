@@ -5,7 +5,6 @@
 # race job joins the gate.
 
 INITECH_35AK  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
-INITECH_3WKL7  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
 INITECH_9GVN  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
 INITECH_9IMX  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
 INITECH_9ISX  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.

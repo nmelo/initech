@@ -25,7 +25,7 @@ const (
 )
 
 // operatorSender is the sender name of the operator's own hand: typing and
-// pastes into a pane, an inbox reply made in the TUI, the web companion
+// pastes into a pane, the web companion
 // (which signs in as the operator), and initech keystroke run outside any
 // pane. Do-not-disturb lets it through. A CLI send run outside any pane is
 // outsideSender, not this (ini-slqv). "@" is not a valid role name, so no
@@ -40,7 +40,7 @@ const OperatorSender = operatorSender
 // CLI: a person at a terminal or a script in a plain shell, which initech
 // cannot tell apart (ini-slqv). Do-not-disturb holds it like an agent's
 // message; it may break through with --urgent, as super may. The operator's
-// own hand (typing, pastes, an inbox reply, the companion) is operatorSender.
+// own hand (typing, pastes, the companion) is operatorSender.
 const outsideSender = "@outside"
 
 // OutsideSender is outsideSender for the CLI, which stamps it.

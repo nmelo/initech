@@ -172,7 +172,7 @@ type TUI struct {
 	// strips is window 1's list strips (initech strip); nil in a viewer.
 	strips *stripBook
 	// identifyStripCaller names the pane a strip request comes from; nil
-	// uses the caller's process tree, as initech post does. Tests set it.
+	// uses the caller's process tree (identifyConnection). Tests set it.
 	identifyStripCaller func(net.Conn) (string, error)
 	// lastDrawn is how the frame loop last drew each pane, and frameChanged
 	// the panes whose content or drawing changed in the last frame drawn
@@ -240,27 +240,12 @@ type TUI struct {
 	paceIdle     map[string][]paceIdleMark
 	paceIdleSent map[string]time.Time
 	paceAnswers  map[string]paceAnswer
-	inboxOnce    sync.Once
-	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
-	// may still be corrected by a late report from the send path (ini-3wkl.6).
-	inboxOutstanding   map[string][]string
-	inboxOutstandingMu sync.Mutex
-	// inboxDeliveries counts in-flight reply deliveries, so a caller can join
-	// them (ini-5rvq). Nothing in production waits on it.
-	inboxDeliveries sync.WaitGroup
-	inboxStore      *Inbox
-	// inboxStoreMu guards inboxStore's identity and lastInboxRefresh: a child
-	// window replaces the store on refresh while other goroutines read it
-	// (ini-3wkl.7).
-	inboxStoreMu sync.Mutex
 	// perf is the always-on self-measurement's current minute (ini-pqdy.1).
 	// Main goroutine only.
 	perf perfRecorder
 	// perfEmit receives each finished minute; nil means emitPerfLine on its
 	// own goroutine. Tests set it to capture the snapshot.
-	perfEmit         func(perfSnapshot)
-	lastInboxRefresh time.Time
-	postTeaching     postTeachingState
+	perfEmit func(perfSnapshot)
 
 	screen      tcell.Screen
 	panes       []PaneView
@@ -412,15 +397,9 @@ type TUI struct {
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
 	agents    agentsModal    // Agent management modal.
-	inbox     inboxPanel     // Operator inbox panel (ini-3wkl.4).
 	watchesM  watchesModal   // The watches modal (Alt+t), main window only.
 	quickGrid quickGridModal // Quick grid/live dimension popup (Option+G/L).
 	welcome   welcomeOverlay // First-launch keybinding hints.
-
-	// inboxSeenWarned keeps a refused seen-write (a secondary window, before
-	// child F routes it to window 1) to ONE log line rather than one per
-	// keystroke -- the ini-4dzh lesson, applied before it can bite.
-	inboxSeenWarned bool
 
 	// attentionConsent is the one-time attention-hooks consent question for
 	// EXISTING projects (ini-2x8.6). Window 1 only.
@@ -460,10 +439,6 @@ type TUI struct {
 	chime          Chimer
 	attentionSound string
 	chimeSeen      map[string]chimeState
-	// inboxChimes rate-limits the INBOX bell per agent (ini-3wkl.5). Separate
-	// from chimeSeen on purpose: that map is keyed to waiting episodes and
-	// carries the 2-minute reminder, which an inbox item must never inherit.
-	inboxChimes inboxChimeLimiter
 
 	// exitReason, when non-nil, is returned by Run after the screen is
 	// restored -- an operator-facing explanation for a self-initiated exit
@@ -1467,11 +1442,6 @@ func Run(cfg Config) error {
 		pm.SetOnWindowToken(func(missing bool) {
 			t.runOnMain(func() { t.windowTokenMissing = missing })
 		})
-		// The inbox's own doorbell (ini-3wkl.7): re-read the inbox, and
-		// nothing else -- never the session notice's layout re-plan.
-		pm.SetOnInboxChanged(func() {
-			t.runOnMain(t.refreshInboxIfFollower)
-		})
 		// Ownership is served, never derived (ini-x5ob). Marshalled onto the
 		// main loop for the same reason every other peer callback is: it
 		// mutates render state.
@@ -1703,8 +1673,6 @@ func Run(cfg Config) error {
 			if t.remotes != nil {
 				t.remotes.kick() // Never waits; at most once a second.
 			}
-			// The inbox staleness floor for a child window (ini-3wkl.7).
-			t.refreshInboxOnCadence(time.Now())
 			if (t.layoutState.Mode == LayoutLive || t.liveFocus != nil || t.liveList != nil) && time.Since(t.lastLiveTick) >= time.Second {
 				t.lastLiveTick = time.Now()
 				t.applyLayout()

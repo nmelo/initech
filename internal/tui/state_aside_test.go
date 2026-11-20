@@ -43,13 +43,6 @@ func stateStores() []stateStore {
 				return w.MoveGroup("core", "window-2")
 			}
 		}},
-		{"inbox", inboxPath, func(tu *TUI) (bool, func() error) {
-			ib := tu.inboxState()
-			return !ib.readOnly, func() error {
-				_, err := ib.Post(InboxItem{Agent: "eng2", Body: "after"}, "")
-				return err
-			}
-		}},
 	}
 }
 

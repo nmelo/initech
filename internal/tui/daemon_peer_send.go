@@ -17,7 +17,7 @@ import (
 // do this, and the sender hears the Mac's verdict words unchanged.
 
 // identifySendingPane names the serve's pane whose process tree the
-// connection comes from, as initech post identifies its poster: never from
+// connection comes from, as the shared identity check (identifyConnection) does: never from
 // what the request says.
 func (d *Daemon) identifySendingPane(conn net.Conn) (string, error) {
 	if d.identifySender != nil {

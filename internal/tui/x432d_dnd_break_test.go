@@ -62,17 +62,6 @@ func TestDNDBreak_TheOperatorsSendLandsNow(t *testing.T) {
 	})
 }
 
-// AC1: an inbox reply from the operator's window lands now.
-func TestDNDBreak_AnInboxReplyLandsNow(t *testing.T) {
-	p, _, typed := dndPane(t, "a")
-	tu := newTestTUI(p)
-	p.startDND()
-	tu.deliverInboxReply("item-1", "a", "[reply] yes, go ahead")
-	if !dndWait(5*time.Second, func() bool { return strings.Contains(typed(), "[reply] yes, go ahead") }) {
-		t.Errorf("inbox reply held: typed %q, queue %d", typed(), p.QueueLen())
-	}
-}
-
 // AC2: super --urgent lands now, with one line in the TUI log and one event.
 func TestDNDBreak_SuperUrgentLandsAndIsLogged(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {

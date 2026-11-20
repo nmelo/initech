@@ -17,8 +17,7 @@ const connIdentityRule = "this command acts for the agent whose pane runs it; ru
 const connWindowsRefusal = "this command is not available on Windows in this release: initech cannot tell which agent's pane a call comes from over this transport"
 
 type connIdentity struct {
-	agent  string
-	runKey string
+	agent string
 }
 
 type connPaneProcess struct {
@@ -52,7 +51,7 @@ func (t *TUI) identifyConnection(conn net.Conn) (connIdentity, error) {
 				p.mu.Lock()
 				if p.alive && !p.suspended && p.pid > 0 {
 					processes = append(processes, connPaneProcess{pid: p.pid, identity: connIdentity{
-						agent: p.name, runKey: connProcessRunKey(p.pid, p.startedAt),
+						agent: p.name,
 					}})
 				}
 				p.mu.Unlock()
@@ -62,12 +61,6 @@ func (t *TUI) identifyConnection(conn net.Conn) (connIdentity, error) {
 		return connIdentity{}, fmt.Errorf("could not identify your pane: TUI shutting down")
 	}
 	return identifyAncestor(pid, processes, connParentPID)
-}
-
-// The pane process is stable across CLI invocations but changes on restart.
-// Including its start instant also separates recycled OS PIDs.
-func connProcessRunKey(pid int, started time.Time) string {
-	return fmt.Sprintf("%d:%d", pid, started.UnixNano())
 }
 
 func identifyAncestor(pid int, panes []connPaneProcess, parent func(int) (int, error)) (connIdentity, error) {

@@ -41,7 +41,7 @@ type WatchListing struct {
 }
 
 // watchIdentify is the agent behind conn, worked out from the connection as
-// initech cron and post are, never from what the request says. "" means the
+// initech cron is, never from what the request says. "" means the
 // command ran outside any agent's pane. Tests stand in for it.
 var watchIdentify = func(t *TUI, conn net.Conn) string {
 	id, err := t.identifyConnection(conn)

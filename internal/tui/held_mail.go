@@ -151,8 +151,8 @@ func (p *Pane) takeQueued(pick func(QueuedMessage) bool) []QueuedMessage {
 }
 
 // surfaceHeldMail reports messages the fleet accepted and will not deliver:
-// one Info line and one "NOT delivered (" event each, the format the toast,
-// the event log and the inbox already read for the belt's reports. The wait
+// one Info line and one "NOT delivered (" event each, the format the toast
+// and the event log already read for the belt's reports. The wait
 // is in both, so the operator knows the message sat, not just that it failed.
 func (p *Pane) surfaceHeldMail(msgs []QueuedMessage, why string, now time.Time) {
 	for _, m := range msgs {

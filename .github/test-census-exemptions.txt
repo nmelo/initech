@@ -78,6 +78,7 @@ internal/roles/selector_unit_test.go          windows  # undefined: buildDisplay
 # hanging is the symptom, not the whole finding.
 internal/tui/window_server_test.go            windows  # tui package hangs 600s on windows CI: goroutines stuck in startWindowServer TCP Accept (run 31651424793)
 internal/tui/protocol_version_test.go         windows  # drives window_server_test.go's startTestWindowServer, which hangs the tui package on windows CI (run 31651424793); the portable half lives untagged in protocol_version_portable_test.go
+internal/tui/inbox_gone_conn_test.go         windows  # drives window_server_test.go's startTestWindowServer and dialWindow (windows-excluded); the portable checks live untagged in inbox_gone_test.go
 internal/tui/window_token_test.go             windows  # drives window_server_test.go's startWindowServer helpers, which hang the tui package on windows CI (run 31651424793); the fail-closed hello check is portable in window_token_portable_test.go
 internal/tui/strip_stream_conn_test.go        windows  # drives window_server_test.go's startTestWindowServer, which hangs the tui package on windows CI (run 31651424793); the portable half of the strip stream tests lives untagged in strip_stream_test.go
 internal/tui/qodm_starts_fresh_test.go        windows  # composed two-process retirement check: drives startTestWindowServer plus a real viewer under a PTY (creack/pty), both unavailable on the windows leg
@@ -139,8 +140,6 @@ internal/tui/attention_rig_test.go           windows  # composed two-window PTY 
 internal/tui/a9d8_rig_test.go                windows  # composed real-binary/real-PTY rig, CLI-driven (gated INITECH_A9D8=1)
 internal/tui/dr03_rig_test.go                windows  # composed two-window real-burst rig (gated INITECH_DR03=1)
 internal/tui/fn77_rig_test.go                windows  # composed two-window PTY rig (gated INITECH_FN77=1)
-internal/tui/inbox_route_tripwire_test.go    windows  # syscall.Mkfifo: the non-contact tripwire needs a POSIX named pipe (ini-3wkl.7)
-internal/tui/inbox7_rig_test.go              windows  # composed two-window PTY rig (gated INITECH_3WKL7=1)
 internal/tui/uz42_rig_test.go                windows  # composed two-window PTY rig (gated INITECH_UZ42=1)
 internal/tui/z5uw_composed_rig_test.go       windows  # composed two-main/viewer bind-conflict PTY rig (gated INITECH_Z5UW=1)
 internal/tui/ninegvn_rig_test.go             windows  # composed PTY rig for the modal-defer guard (gated INITECH_9GVN=1)

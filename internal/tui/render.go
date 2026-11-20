@@ -296,9 +296,6 @@ func (t *TUI) renderFrame() {
 	}
 
 	// Agents modal (centered floating box, like welcome).
-	if t.inbox.active {
-		t.renderInboxPanel()
-	}
 	if t.agents.active {
 		t.renderAgents()
 	}
@@ -1597,8 +1594,7 @@ type badgeCell struct {
 	style tcell.Style
 }
 
-// projectBadgeCells lays out the project badge and its unread count on row
-// 0, from column 0. One layout for drawing and measuring it, so a pane's
+// projectBadgeCells lays out the project badge on row 0, from column 0. One layout for drawing and measuring it, so a pane's
 // effort line on the same row starts after it (ini-y0n.2) and the two can
 // never disagree about where it ends.
 func (t *TUI) projectBadgeCells() []badgeCell {
@@ -1623,27 +1619,6 @@ func (t *TUI) projectBadgeCells() []badgeCell {
 		cells = append(cells, badgeCell{col, ch, style})
 		col += w
 	}
-
-	// THE INBOX COUNT, beside the badge (ini-3wkl.4). UNREAD only, so opening
-	// an item drops it while the item stays listed, and rendered ONLY when
-	// above zero -- an operator with an empty inbox should see no mark at
-	// all, not a zero to interpret.
-	//
-	// Through the same runewidth accounting as the badge above, deliberately:
-	// the envelope is one rune and one column, but the count that follows it
-	// is not bounded, and this line is the one place the badge's own lesson
-	// (ini-ug62) would be re-learned if it were written with len().
-	if n := t.inboxUnreadForBadge(); n > 0 {
-		countStyle := tcell.StyleDefault.Foreground(tcell.ColorDodgerBlue).Bold(true)
-		for _, ch := range fmt.Sprintf(" ✉ %d", n) {
-			w := runewidth.RuneWidth(ch)
-			if col+w > sw {
-				break
-			}
-			cells = append(cells, badgeCell{col, ch, countStyle})
-			col += w
-		}
-	}
 	return cells
 }
 
@@ -1655,18 +1630,6 @@ func (t *TUI) projectBadgeEnd() int {
 		end = c.x + runewidth.RuneWidth(c.ch)
 	}
 	return end
-}
-
-// inboxUnreadForBadge is the corner count. Reads the store directly so the
-// number cannot lag the panel's state: there is no cached count to update,
-// which is what makes "selecting marks seen AND the count drops" one act
-// rather than two writes kept in step (ini-3wkl.4 AC 1).
-func (t *TUI) inboxUnreadForBadge() int {
-	r := t.inboxPanelStore()
-	if r == nil {
-		return 0
-	}
-	return inboxUnreadCount(r)
 }
 
 // statusClock is the status bar clock's time source. A variable only so a

@@ -189,7 +189,7 @@ func paneChangedForFrame(last, next map[PaneView]paneFrameState, pr PaneRender, 
 }
 
 // layerRecorder is the screen the layers drawn over the panes write through
-// (the overlay, help, the inbox, toasts, the status bar...): it passes every
+// (the overlay, help, toasts, the status bar...): it passes every
 // write on and records which cells were written. Next frame those cells are
 // restored: blanked where no pane lies, and the panes under them drawn again,
 // because the layer may be gone (ini-ysr.2). Every layer writes through

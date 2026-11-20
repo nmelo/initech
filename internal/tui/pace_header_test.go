@@ -191,13 +191,12 @@ func TestPaceHeader_TheProjectBadgeDoesNotCoverTheLine(t *testing.T) {
 	ysr2SameAsFull(t, tui, s, "the line beside a longer badge")
 }
 
-// The badge's end counts the unread mark beside it, measured by the layout
-// that draws them.
-func TestPaceHeader_TheBadgeEndCountsTheUnreadMark(t *testing.T) {
-	tui, _ := inboxTUI(t, inboxItemAt("p1", "eng1", "unread", time.Minute))
+// The badge's end is its label's end, measured by the layout that draws it.
+func TestPaceHeader_TheBadgeEndIsTheLabelsEnd(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1")
 	tui.projectName = "initech"
-	if got, want := tui.projectBadgeEnd(), len(" initech ")+len(" ✉ 1")-2; got != want {
-		t.Errorf("badge end %d, want %d (the label and the unread mark)", got, want)
+	if got, want := tui.projectBadgeEnd(), len(" initech "); got != want {
+		t.Errorf("badge end %d, want %d (the label)", got, want)
 	}
 	if got := headerInsetFor(Region{X: 0, Y: 0, W: 40}, 13); got != 13 {
 		t.Errorf("a pane at the corner: inset %d, want 13", got)

@@ -45,7 +45,7 @@ func startTokenlessWindowServer(t *testing.T) (*windowServer, string, *config.Pr
 	t.Helper()
 	proj := tokenlessWindowProject(t)
 	panes := []*Pane{windowServerTestPane("eng1")}
-	ws, cleanup, err := startWindowServer(proj, "test", panes, func(f func()) { go f() }, nil, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(proj, "test", panes, func(f func()) { go f() }, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestWindowToken_SecondWindowConnectsFromTheTokenFile(t *testing.T) {
 func TestWindowToken_AConfiguredTokenWritesNoFile(t *testing.T) {
 	proj := tokenlessWindowProject(t)
 	proj.Token = "configured-token"
-	ws, cleanup, err := startWindowServer(proj, "test", []*Pane{windowServerTestPane("eng1")}, func(f func()) { go f() }, nil, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(proj, "test", []*Pane{windowServerTestPane("eng1")}, func(f func()) { go f() }, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestWindowToken_WindowTwoRecoversAfterWindowOneRestarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := func() (*windowServer, func()) {
-		ws, cleanup, err := startWindowServer(proj, "test", []*Pane{windowServerTestPane("eng1")}, func(f func()) { go f() }, nil, nil, nil, nil)
+		ws, cleanup, err := startWindowServer(proj, "test", []*Pane{windowServerTestPane("eng1")}, func(f func()) { go f() }, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("startWindowServer: %v", err)
 		}
@@ -359,7 +359,7 @@ func TestWindowToken_AWindowOneThatCannotBindLeavesTheRunningOnesToken(t *testin
 
 	second := *proj
 	second.WindowListen = addr // already held by the first window 1
-	if _, _, err := startWindowServer(&second, "test", []*Pane{windowServerTestPane("eng1")}, func(f func()) { go f() }, nil, nil, nil, nil); err == nil {
+	if _, _, err := startWindowServer(&second, "test", []*Pane{windowServerTestPane("eng1")}, func(f func()) { go f() }, nil, nil, nil); err == nil {
 		t.Fatal("a second window 1 bound a port the first one holds")
 	}
 	b, err := os.ReadFile(windowTokenPath(proj.Root))

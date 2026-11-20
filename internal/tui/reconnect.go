@@ -74,11 +74,6 @@ type peerManager struct {
 	// without mutating state a leftover reconnect goroutine reads (ini-u1q7).
 	disconnectPoll time.Duration
 
-	// onInboxChanged is window 1's inbox doorbell (ini-3wkl.7). Its OWN
-	// callback, never onSessionNotice: that one re-plans the layout, and a
-	// post must not.
-	onInboxChanged func()
-
 	// onAgentEvent is called with a serve daemon's delivery report for one of
 	// its agents (ini-ei8l), on this peer's event goroutine.
 	onAgentEvent func(peerName string, ev ControlResp)
@@ -649,10 +644,6 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 					LogInfo("remote", "pane ownership from window 1", "peer", peerName, "agents", len(ev.Owner))
 					pm.onPaneOwnership(ev.Owner)
 				}
-			case inboxChangedAction:
-				if pm.onInboxChanged != nil {
-					pm.onInboxChanged()
-				}
 			case sessionNoticeAction:
 				if pm.onSessionNotice != nil {
 					LogInfo("remote", "session notice from window 1", "peer", peerName, "text", ev.Text)
@@ -847,11 +838,6 @@ func (pm *peerManager) SetOnSessionNotice(fn func(text string)) {
 // SetOnAgentEvent registers the delivery-report callback (ini-ei8l).
 func (pm *peerManager) SetOnAgentEvent(fn func(peerName string, ev ControlResp)) {
 	pm.onAgentEvent = fn
-}
-
-// SetOnInboxChanged registers the inbox doorbell callback (ini-3wkl.7).
-func (pm *peerManager) SetOnInboxChanged(fn func()) {
-	pm.onInboxChanged = fn
 }
 
 // SetOnPaneOwnership registers the callback fired when window 1 serves its

@@ -16,7 +16,7 @@ func TestBackgroundState_RidesAgentStatusToOtherWindows(t *testing.T) {
 	p := windowServerTestPane("eng1")
 	ws, cleanup, err := startWindowServer(
 		testWindowProject("127.0.0.1:0"), "test",
-		[]*Pane{p}, func(f func()) { go f() }, nil, nil, nil, nil)
+		[]*Pane{p}, func(f func()) { go f() }, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}

@@ -249,7 +249,7 @@ jobs:
         run: scripts/rigs-resources.sh report
 
   composed-rigs-shard4:
-    # ~173s measured: Attention 73.0s + SuspendFate 65.7s + Inbox7 34.1s
+    # ~139s measured: Attention 73.0s + SuspendFate 65.7s
     runs-on: ${{ github.event_name != 'pull_request' && 'initech-rigs' || 'ubuntu-latest' }}
     # ini-8k1o: every job carries a timeout, or a wedged rig holds a runner to
     # GitHub's 6h cap. Measured ~3 min on the Mac host; 20 allows for a
@@ -269,17 +269,16 @@ jobs:
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
-        run: go test ./internal/tui/ -list 'AttentionRig|TestSuspendFate|Inbox7Rig'
+        run: go test ./internal/tui/ -list 'AttentionRig|TestSuspendFate'
 
       - name: Composed multi-window rigs (real binaries, real PTYs)
         env:
           INITECH_35AK: "1"
           INITECH_9IMX: "1"
-          INITECH_3WKL7: "1"
         # -v so the log NAMES every rig that ran: without it a skipped rig is
         # invisible and a shard reports a vacuous green (shipper, reviewing
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
-        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'AttentionRig|TestSuspendFate|Inbox7Rig'
+        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'AttentionRig|TestSuspendFate'
 
       - name: Resources this job used
         if: always()
@@ -317,7 +316,7 @@ jobs:
         run: scripts/rigs-resources.sh start
 
       - name: Witness which rigs this job selected
-        run: go test ./internal/tui/ -list 'X5obRig|FN77Rig|A9d8Rig|TestSuspendGuard|TestAQY_|UZ42Rig|NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig|AttentionRig|TestSuspendFate|Inbox7Rig|TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
+        run: go test ./internal/tui/ -list 'X5obRig|FN77Rig|A9d8Rig|TestSuspendGuard|TestAQY_|UZ42Rig|NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig|AttentionRig|TestSuspendFate|TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
 
       - name: Env-gated rigs (race detector)
         env:
@@ -332,9 +331,8 @@ jobs:
           INITECH_9GVN: "1"
           INITECH_Z5UW: "1"
           INITECH_35AK: "1"
-          INITECH_3WKL7: "1"
           INITECH_CENSUS: "1"
-        run: go test ./internal/tui/ -race -count=1 -v -timeout 2700s -run 'X5obRig|FN77Rig|A9d8Rig|TestSuspendGuard|TestAQY_|UZ42Rig|NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig|AttentionRig|TestSuspendFate|Inbox7Rig|TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
+        run: go test ./internal/tui/ -race -count=1 -v -timeout 2700s -run 'X5obRig|FN77Rig|A9d8Rig|TestSuspendGuard|TestAQY_|UZ42Rig|NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig|AttentionRig|TestSuspendFate|TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
 
       - name: Resources this job used
         if: always()

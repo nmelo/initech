@@ -48,7 +48,7 @@ operator once, with how long it waited.
 The flag lives in the running initech only, and a restart clears it; the
 messages it held are kept across the restart and delivered after it.
 Your own typing is never held, nor is a
-send run outside any pane (the operator's) or an inbox reply; super can
+send run outside any pane (the operator's); super can
 break through with initech send --urgent, which is logged. It trusts the
 sender's word (INITECH_AGENT): a courtesy, not a security wall.
 

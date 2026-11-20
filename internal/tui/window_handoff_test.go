@@ -47,7 +47,7 @@ func handoffCatPane(t *testing.T) *Pane {
 func handoffTUI(t *testing.T, panes ...*Pane) (*TUI, *windowServer) {
 	t.Helper()
 	tui := f6kgTUI(toPaneViews(panes)...)
-	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}

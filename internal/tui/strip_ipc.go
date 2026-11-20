@@ -172,7 +172,7 @@ func (d *Daemon) handleIPCStrip(conn net.Conn, req IPCRequest) {
 
 // stripCallerIs refuses a strip request that does not come from inside the
 // pane it names: the list belongs to its pane's agent (point 5), so it is
-// attributed by the caller's process tree, as initech post is, never by what
+// attributed by the caller's process tree (identifyConnection), never by what
 // the request says.
 func (t *TUI) stripCallerIs(conn net.Conn, agent string) error {
 	identify := t.identifyStripCaller

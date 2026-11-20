@@ -159,8 +159,6 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	if ev.Time.IsZero() {
 		ev.Time = time.Now()
 	}
-	// The send path's late verdicts on a reply ride this stream (ini-3wkl.6).
-	t.noteInboxDeliveryEvent(ev)
 	// Never a silent drop (ini-hkxn): the sender of a withheld message that
 	// ended not delivered is told, once, here on the main goroutine. Never
 	// into the pane that failed: initech's own line to a stuck super tells

@@ -165,7 +165,6 @@ func TestPartialFrame_LayersLeaveNoStaleCells(t *testing.T) {
 	for name, toggle := range map[string]func(*TUI, bool){
 		"agents overlay": func(tu *TUI, on bool) { tu.layoutState.Overlay = on },
 		"help":           func(tu *TUI, on bool) { tu.help.active = on },
-		"inbox":          func(tu *TUI, on bool) { tu.inbox.active = on },
 		"agents picker":  func(tu *TUI, on bool) { tu.agents.active = on },
 		"toast": func(tu *TUI, on bool) {
 			tu.notifications = nil

@@ -57,22 +57,19 @@ var (
 
 // IPCRequest is the JSON structure sent by CLI commands to the TUI socket.
 type IPCRequest struct {
-	Action      string   `json:"action"`                 // "send", "peek", "list", "peers_query"
-	Target      string   `json:"target"`                 // Role name (for send/peek).
-	Host        string   `json:"host"`                   // Remote peer name (for cross-machine send). Empty = local.
-	Text        string   `json:"text"`                   // Text to inject (for send).
-	Lines       int      `json:"lines"`                  // Number of lines to return (for peek, 0 = all).
-	Enter       bool     `json:"enter"`                  // Append Enter after text (for send).
-	Prune       bool     `json:"prune,omitempty"`        // reload: also remove deconfigured self-started agents.
-	ItemID      string   `json:"item_id,omitempty"`      // Inbox item, distinct from control request correlation.
-	DefaultText string   `json:"default_text,omitempty"` // Proposed action absent an operator reply.
-	Chime       bool     `json:"chime,omitempty"`        // Request one inbox arrival chime.
-	Detail      bool     `json:"detail,omitempty"`       // list: also read each pane's footer and dialog (status --json).
-	ForSec      int      `json:"for_sec,omitempty"`      // dnd on: end after this many seconds, not at turn end.
-	UntilOff    bool     `json:"until_off,omitempty"`    // dnd on: hold through turn ends until dnd off (ini-pt3j).
-	From        string   `json:"from,omitempty"`         // send: the sending agent, "@outside" (a CLI send outside any pane), or "@operator" (the companion, a keystroke outside a pane); none from an older CLI.
-	Items       []string `json:"items,omitempty"`        // strip: the pane's list, in order; none clears it.
-	Urgent      bool     `json:"urgent,omitempty"`       // send --urgent: super breaks do-not-disturb.
+	Action   string   `json:"action"`              // "send", "peek", "list", "peers_query"
+	Target   string   `json:"target"`              // Role name (for send/peek).
+	Host     string   `json:"host"`                // Remote peer name (for cross-machine send). Empty = local.
+	Text     string   `json:"text"`                // Text to inject (for send).
+	Lines    int      `json:"lines"`               // Number of lines to return (for peek, 0 = all).
+	Enter    bool     `json:"enter"`               // Append Enter after text (for send).
+	Prune    bool     `json:"prune,omitempty"`     // reload: also remove deconfigured self-started agents.
+	Detail   bool     `json:"detail,omitempty"`    // list: also read each pane's footer and dialog (status --json).
+	ForSec   int      `json:"for_sec,omitempty"`   // dnd on: end after this many seconds, not at turn end.
+	UntilOff bool     `json:"until_off,omitempty"` // dnd on: hold through turn ends until dnd off (ini-pt3j).
+	From     string   `json:"from,omitempty"`      // send: the sending agent, "@outside" (a CLI send outside any pane), or "@operator" (the companion, a keystroke outside a pane); none from an older CLI.
+	Items    []string `json:"items,omitempty"`     // strip: the pane's list, in order; none clears it.
+	Urgent   bool     `json:"urgent,omitempty"`    // send --urgent: super breaks do-not-disturb.
 }
 
 // origin is who sent req, as its initech stamped it.
@@ -245,8 +242,6 @@ func (t *TUI) HandleSend(conn net.Conn, req IPCRequest) {
 
 func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {
 	switch req.Action {
-	case "post", "post_check", "post_mine", "post_withdraw":
-		t.handleIPCPost(conn, req, rawJSON)
 	case "remotes_reload":
 		t.handleIPCRemotesReload(conn)
 	case "cron_list", "cron_add", "cron_remove":
@@ -2868,7 +2863,7 @@ func withheldUnknownLine(pane string, sentAt time.Time) string {
 
 // deliverWithheldSubmit sends a withheld submit whose body is provably in the
 // composer, and records it as DELIVERED -- the one fate line, in the one
-// event format the toast, event log and inbox read. Caller holds sendMu.
+// event format the toast and event log read. Caller holds sendMu.
 // Claimed first: if another resolver already reported it, sending now would
 // make that report a lie.
 func (p *Pane) deliverWithheldSubmit(ps *pendingSubmit, how string) bool {
@@ -3051,7 +3046,7 @@ func (p *Pane) surfaceUndeliveredSubmit(ps *pendingSubmit, why string) {
 }
 
 // emitUndeliveredSubmit is the operator-facing half of an undelivered report:
-// the "NOT delivered (...)" event the toast, the event log and the inbox all
+// the "NOT delivered (...)" event the toast and the event log both
 // read. Shared by the belt and the submit confirmation (ini-nma5) so both
 // speak one format.
 func (p *Pane) emitUndeliveredSubmit(ps *pendingSubmit, why string, waited time.Duration) {

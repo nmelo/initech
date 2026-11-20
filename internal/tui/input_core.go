@@ -68,9 +68,6 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 	}
 
 	// Agents modal intercepts all input when active.
-	if t.inbox.active {
-		return t.handleInboxKey(ev)
-	}
 	if t.agents.active {
 		return t.handleAgentsKey(ev)
 	}
@@ -204,15 +201,6 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 					t.agents.active = false
 				} else {
 					t.openAgentsModal()
-				}
-				return false
-			case 'i':
-				// The operator inbox (ini-3wkl.4). Toggles like the agents
-				// modal; 'i' was free in this switch (1-7, s, z, f, a, g, l, q).
-				if t.inbox.active {
-					t.inbox.active = false
-				} else {
-					t.openInboxPanel()
 				}
 				return false
 			case 'w':

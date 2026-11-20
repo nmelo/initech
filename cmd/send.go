@@ -67,7 +67,7 @@ needs a retry), prints one line and exits with:
 
 An agent in do-not-disturb (initech dnd) holds every send to it, from an
 agent or from outside any pane (a terminal or a script): only the
-operator's typing, an inbox reply and the web companion go straight in.
+operator's typing and the web companion go straight in.
 super, or you from a terminal outside any pane, may break through with
 --urgent, which delivers now and leaves a line in the TUI log and the
 event log; --urgent from any other agent is refused, and to an agent not
@@ -152,22 +152,20 @@ var allowDevDelivery bool
 // deliberately are NOT in this set, so read-only commands keep their current
 // behavior unchanged (ini-grg3 AC).
 var deliveryEffectActions = map[string]bool{
-	"post":          true,
-	"post_withdraw": true,
-	"withdraw":      true,
-	"send_after":    true,
-	"send":          true,
-	"restart":       true,
-	"stop":          true,
-	"quit":          true,
-	"interrupt":     true,
-	"keystroke":     true,
-	"bead":          true,
-	"start":         true,
-	"add":           true,
-	"remove":        true,
-	"emit_event":    true,
-	"dnd":           true,
+	"withdraw":   true,
+	"send_after": true,
+	"send":       true,
+	"restart":    true,
+	"stop":       true,
+	"quit":       true,
+	"interrupt":  true,
+	"keystroke":  true,
+	"bead":       true,
+	"start":      true,
+	"add":        true,
+	"remove":     true,
+	"emit_event": true,
+	"dnd":        true,
 }
 
 // isDevBuild reports whether this binary is anything but a released one
