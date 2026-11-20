@@ -17,7 +17,6 @@ const maxQueueBytes = 1 << 20
 // When a refused sender can send again, by why the pane holds mail.
 const (
 	sendAgainWhenResumes  = "it resumes"
-	sendAgainWhenStarted  = "it has started"
 	sendAgainWhenDialog   = "its dialog closes"
 	sendAgainWhenReading  = "it reads its input again"
 	sendAgainWhenTurnEnds = "its turn ends"

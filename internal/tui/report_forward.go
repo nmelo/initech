@@ -156,8 +156,9 @@ func servedSend(p *Pane, text string, enter bool, o sendOrigin) ControlResp {
 		LogInfo("daemon", "SEND NOT DELIVERED", "target", p.Name(), "reason", err)
 		return ControlResp{Error: err.Error()}
 	}
-	if p.startingNow(time.Now()) {
-		return verdictControlResp(p.holdWhileStarting(text, enter, o), "") // held until it is up (ini-krly)
+	if err := p.awaitStartupSettled(); err != nil {
+		LogInfo("daemon", "SEND NOT DELIVERED", "target", p.Name(), "reason", err)
+		return ControlResp{Error: err.Error()}
 	}
 	return verdictSend(p, text, enter, o)
 }

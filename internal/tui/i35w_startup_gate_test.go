@@ -20,9 +20,9 @@ import (
 // i35wGateClock shortens the gate for a test and restores it.
 func i35wGateClock(t *testing.T, stable, cap time.Duration) {
 	t.Helper()
-	oldStable, oldCap := settleStable(), settleCap()
-	setSettleClock(stable, cap)
-	t.Cleanup(func() { setSettleClock(oldStable, oldCap) })
+	oldStable, oldCap := startupSettleStable, startupSettleCap
+	startupSettleStable, startupSettleCap = stable, cap
+	t.Cleanup(func() { startupSettleStable, startupSettleCap = oldStable, oldCap })
 }
 
 // i35wFreshPane is a pane whose process "just started", with its PTY replaced
@@ -168,9 +168,7 @@ func TestStartupGate_AnAgentThatNeverSettlesIsReportedStillStarting(t *testing.T
 
 // The incident, end to end at the IPC: a send to a booting agent is refused
 // and NOTHING reaches the child, instead of "delivered" over a PTY that eats it.
-// ini-krly: no longer refused. The send is held with its receipt, exit 0,
-// and still NOTHING reaches the child while it starts.
-func TestHandleIPCSend_HoldsAnAgentStillStartingAndWritesNothing(t *testing.T) {
+func TestHandleIPCSend_RefusesAnAgentStillStartingAndWritesNothing(t *testing.T) {
 	i35wGateClock(t, 100*time.Millisecond, 400*time.Millisecond)
 	p, r := i35wFreshPane(t, "eng4")
 	i35wKeepTalking(t, p)
@@ -178,11 +176,11 @@ func TestHandleIPCSend_HoldsAnAgentStillStartingAndWritesNothing(t *testing.T) {
 	resp := i35wIPC(t, func(c net.Conn) {
 		tui.handleIPCSend(c, IPCRequest{Target: "eng4", Text: "MARKER_I35W", Enter: true})
 	})
-	if !resp.OK || resp.Delivery != DeliveryHeld || !strings.HasPrefix(resp.Data, "held for eng4: still starting, 0 ahead (receipt ") {
-		t.Fatalf("send to a booting agent: %+v, want the still-starting hold", resp)
+	if resp.OK || !strings.HasPrefix(resp.Error, ErrPaneStillStarting.Error()) {
+		t.Fatalf("send to a booting agent: %+v, want a still-starting refusal", resp)
 	}
 	if got := i35wDrain(t, p, r); got != "" {
-		t.Fatalf("a held send wrote %q to the child while it starts", got)
+		t.Fatalf("a refused send still wrote %q to the child", got)
 	}
 }
 
@@ -198,9 +196,7 @@ func TestStartupGate_SendTextDeliversAnywayWhenTheCapExpires(t *testing.T) {
 	}
 }
 
-// ini-krly: a starting agent is ready to receive (its dispatch is held), so
-// assign claims; a settled one is ready as before.
-func TestHandleIPCSendReady_AnswersReadyForAStartingAgent(t *testing.T) {
+func TestHandleIPCSendReady_AnswersStillStartingThenReady(t *testing.T) {
 	i35wGateClock(t, 100*time.Millisecond, 300*time.Millisecond)
 	p, _ := i35wFreshPane(t, "eng4")
 	i35wKeepTalking(t, p)
@@ -208,8 +204,8 @@ func TestHandleIPCSendReady_AnswersReadyForAStartingAgent(t *testing.T) {
 	ready := func() IPCResponse {
 		return i35wIPC(t, func(c net.Conn) { tui.handleIPCSendReady(c, IPCRequest{Action: "send_ready", Target: "eng4"}) })
 	}
-	if resp := ready(); !resp.OK {
-		t.Fatalf("booting agent: %+v, want ready (its dispatch is held)", resp)
+	if resp := ready(); resp.OK || !strings.HasPrefix(resp.Error, ErrPaneStillStarting.Error()) {
+		t.Fatalf("booting agent: %+v, want a still-starting answer", resp)
 	}
 	p.mu.Lock()
 	p.startupSettled = true

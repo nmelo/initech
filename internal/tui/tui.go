@@ -1852,11 +1852,11 @@ func (t *TUI) deliverForwardedSend(target, text string, enter bool, o sendOrigin
 		}
 		return SendVerdict{}, fmt.Errorf("target cannot withdraw mail")
 	}
-	// A pane still booting would eat the text (ini-i35w): the forwarded send
-	// is held until it is ready (ini-krly), with its receipt.
+	// The forwarding window is waiting on this error (ini-i35w): refuse a
+	// pane still booting rather than let its child eat the text.
 	if lp, ok := pv.(*Pane); ok {
-		if lp.startingNow(time.Now()) {
-			return lp.holdWhileStarting(text, enter, o), nil
+		if err := lp.awaitStartupSettled(); err != nil {
+			return SendVerdict{}, err
 		}
 		return lp.SendTextVerdictFrom(text, enter, o), nil
 	}
