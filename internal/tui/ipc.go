@@ -346,12 +346,8 @@ func (t *TUI) handleIPCSendReady(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: notRunning.Error()})
 		return
 	}
-	if lp, ok := pv.(*Pane); ok && !lp.IsSuspended() {
-		if err := lp.awaitStartupSettled(); err != nil {
-			writeIPCResponse(conn, IPCResponse{Error: err.Error()})
-			return
-		}
-	}
+	// A starting agent is ready to receive: its dispatch is held until it
+	// is up (ini-krly), so assign claims and nothing is rolled back.
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
@@ -505,16 +501,13 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 
-	// A sender is waiting on this answer, so a pane still booting REFUSES here,
-	// before anything is written (ini-i35w): text sent into a booting Claude
-	// is eaten while the sender is told it was delivered. initech send and
-	// assign then exit non-zero, and assign rolls its claim back.
-	if lp, ok := pv.(*Pane); ok {
-		if err := lp.awaitStartupSettled(); err != nil {
-			LogInfo("ipc", "SEND NOT DELIVERED", "target", req.Target, "reason", err)
-			writeIPCResponse(conn, IPCResponse{Error: err.Error()})
-			return
-		}
+	// A pane still booting would eat text sent into it (ini-i35w), so the
+	// send is HELD until it is ready (ini-krly): a receipt, the held line,
+	// exit 0, and nothing written until the startup gate opens.
+	if lp, ok := pv.(*Pane); ok && lp.startingNow(time.Now()) {
+		v := lp.holdWhileStarting(req.Text, req.Enter, req.origin())
+		writeIPCResponse(conn, verdictIPCResponse(req.Target, v, ""))
+		return
 	}
 
 	// Age and depth travel with the deferral (ini-gbqc): "deferred" alone

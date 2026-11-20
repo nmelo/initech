@@ -1480,11 +1480,23 @@ func (p *Pane) notRunningReason() error {
 const startupGateWindow = 60 * time.Second
 
 // The gate's own clock, the wake drain's values by default (ini-hbj4).
-// Variables only so a test can shorten them; nothing in production writes.
-var (
-	startupSettleStable = resumeQuiesceStable
-	startupSettleCap    = StartupSettleBound
-)
+// Atomic only so a test can shorten them (setSettleClock) while a drain on
+// another goroutine reads them; nothing in production writes.
+var startupSettleStableNS, startupSettleCapNS atomic.Int64
+
+func init() { setSettleClock(resumeQuiesceStable, StartupSettleBound) }
+
+// settleStable is how long a starting child must be quiet to read settled.
+func settleStable() time.Duration { return time.Duration(startupSettleStableNS.Load()) }
+
+// settleCap is the longest a send waits for a starting child to settle.
+func settleCap() time.Duration { return time.Duration(startupSettleCapNS.Load()) }
+
+// setSettleClock sets the gate's clock: tests only.
+func setSettleClock(stable, cap time.Duration) {
+	startupSettleStableNS.Store(int64(stable))
+	startupSettleCapNS.Store(int64(cap))
+}
 
 // StartupSettleBound is the longest a send, or a send_ready query, waits for
 // a booting agent to settle before answering. Exported so a CLI client sets
@@ -1509,7 +1521,7 @@ func (p *Pane) awaitStartupSettled() error {
 		return nil // no live child to wait for: the send path reports that itself
 	}
 	if started.IsZero() || time.Since(started) >= startupGateWindow ||
-		waitForQuiescence(p.LastOutputTime, startupSettleStable, startupSettleCap, nil) {
+		waitForQuiescence(p.LastOutputTime, settleStable(), settleCap(), nil) {
 		p.mu.Lock()
 		p.startupSettled = true
 		p.mu.Unlock()
@@ -1517,7 +1529,7 @@ func (p *Pane) awaitStartupSettled() error {
 		return nil
 	}
 	return fmt.Errorf("%w: %s started %s ago and has not gone quiet for %s; resend when it is ready",
-		ErrPaneStillStarting, p.name, time.Since(started).Round(time.Second), startupSettleStable)
+		ErrPaneStillStarting, p.name, time.Since(started).Round(time.Second), settleStable())
 }
 
 // WakeOnStreamInput is the remote twin of wakeSuspendedPaneFromKeystroke's

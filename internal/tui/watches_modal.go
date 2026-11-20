@@ -259,9 +259,11 @@ func (p *Pane) startingNow(now time.Time) bool {
 		return false
 	}
 	p.mu.Lock()
-	settled, started := p.startupSettled, p.startedAt
+	settled, started, suspended := p.startupSettled, p.startedAt, p.suspended
 	p.mu.Unlock()
-	return !settled && !started.IsZero() && now.Sub(started) < startupGateWindow
+	// A suspended pane is asleep, not starting: a send to it queues and
+	// wakes it (ini-krly; rigs: TestSuspendGuard_ForwardSendSite).
+	return !suspended && !settled && !started.IsZero() && now.Sub(started) < startupGateWindow
 }
 
 // watchesNow builds the view from window 1's store at now.

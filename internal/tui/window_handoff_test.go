@@ -120,9 +120,9 @@ func TestWindowHandoff_EveryReplacementReachesTheServer(t *testing.T) {
 	// A just-started pane takes sends only after it settles (ini-i35w); the
 	// gate's clock is shortened, as its own comment allows for tests, so the
 	// send below does not wait out the 15 s production cap.
-	origStable, origCap := startupSettleStable, startupSettleCap
-	startupSettleStable, startupSettleCap = 200*time.Millisecond, 3*time.Second
-	t.Cleanup(func() { startupSettleStable, startupSettleCap = origStable, origCap })
+	origStable, origCap := settleStable(), settleCap()
+	setSettleClock(200*time.Millisecond, 3*time.Second)
+	t.Cleanup(func() { setSettleClock(origStable, origCap) })
 	entries := map[string]func(t *testing.T, tui *TUI, old *Pane){
 		"ipc restart": func(t *testing.T, tui *TUI, old *Pane) {
 			if resp := i35wIPC(t, func(c net.Conn) { tui.handleIPCRestart(c, IPCRequest{Target: "eng1"}) }); !resp.OK {
@@ -243,9 +243,9 @@ func handoffCatPaneNamed(t *testing.T, name string) *Pane {
 // AC 3: a hot-added agent reaches an attached second window, and a removed
 // one leaves it; a send to the removed agent from the second window errors.
 func TestWindowHandoff_AddedAndRemovedAgentsReachSecondWindows(t *testing.T) {
-	origStable, origCap := startupSettleStable, startupSettleCap
-	startupSettleStable, startupSettleCap = 200*time.Millisecond, 3*time.Second
-	t.Cleanup(func() { startupSettleStable, startupSettleCap = origStable, origCap })
+	origStable, origCap := settleStable(), settleCap()
+	setSettleClock(200*time.Millisecond, 3*time.Second)
+	t.Cleanup(func() { setSettleClock(origStable, origCap) })
 
 	tui, ws := handoffTUI(t, handoffCatPane(t))
 	session, ctrl, _ := dialWindow(t, ws.Addr(), "window2")
