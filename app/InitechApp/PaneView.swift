@@ -16,6 +16,8 @@ struct PaneView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var row: PaneRow? { home.row(for: model.ref) }
+    /// rows is the conversation as shown: each run of tool calls joined into one row.
+    var rows: [ConversationRow] { ConversationRow.group(model.messages) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,8 +48,13 @@ struct PaneView: View {
                             Text("Nothing in this pane's conversation yet.")
                                 .font(Theme.mono(.footnote)).foregroundStyle(Theme.dim).frame(maxWidth: .infinity)
                         }
-                        ForEach(model.messages) { m in
-                            MessageView(message: m, verdict: model.verdicts[m.id]).id(m.id)
+                        // A run of tool calls is one row, so the rows, not the messages,
+                        // are what is listed, followed and counted below.
+                        ForEach(rows) { row in
+                            switch row.kind {
+                            case .message(let m): MessageView(message: m, verdict: model.verdicts[m.id]).id(row.id)
+                            case .tools(let run): ToolRunView(tools: run).id(row.id)
+                            }
                         }
                     }
                     .scrollTargetLayout()
@@ -62,7 +69,7 @@ struct PaneView: View {
                 // it, by a tap or by hand, clears the new-below line.
                 .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.5) { ids in
                     visible = Set(ids)
-                    if let last = model.messages.last?.id, visible.contains(last) {
+                    if let last = rows.last?.id, visible.contains(last) {
                         follow.sawBottom(last)
                     } else if !ids.isEmpty {
                         follow.leftBottom()
@@ -72,14 +79,14 @@ struct PaneView: View {
                 // view, or it is his own message; away from the bottom the view
                 // stays put and the new-below line counts what came after the
                 // last entry he saw.
-                .onChange(of: model.messages.last?.id) { old, last in
+                .onChange(of: rows.last?.id) { old, last in
                     guard let last else { return }
                     guard let old else {
                         proxy.scrollTo(last, anchor: .bottom)
                         follow.sawBottom(last)
                         return
                     }
-                    let ids = model.messages.map(\.id)
+                    let ids = rows.map(\.id)
                     let own = model.messages.last?.kind == .nelson
                     // Before the first scroll nothing has reported what is in
                     // view; the pane opened at the bottom, so that stands.
@@ -89,9 +96,9 @@ struct PaneView: View {
                     }
                 }
                 .overlay(alignment: .bottom) {
-                    if let line = follow.markerText(model.messages.map(\.id)) {
+                    if let line = follow.markerText(rows.map(\.id)) {
                         Button(line) {
-                            if let last = model.messages.last?.id {
+                            if let last = rows.last?.id {
                                 withAnimation { proxy.scrollTo(last, anchor: .bottom) }
                                 follow.sawBottom(last)
                             }
@@ -180,7 +187,6 @@ extension PaneView {
 struct MessageView: View {
     let message: Message
     var verdict: SendResult?
-    @State private var expanded = false
 
     var body: some View {
         switch message.kind {
@@ -199,28 +205,7 @@ struct MessageView: View {
             .background(Theme.bar, in: RoundedRectangle(cornerRadius: 8))
             .overlay(alignment: .leading) { Rectangle().fill(Theme.red).frame(width: 2) }
         case .tool:
-            VStack(alignment: .leading, spacing: 6) {
-                Button { expanded.toggle() } label: {
-                    HStack(spacing: 8) {
-                        Text(expanded ? "▾" : "▸").foregroundStyle(Theme.dim)
-                        Text(message.tool?.name ?? "tool").foregroundStyle(Theme.soft).fontWeight(.semibold)
-                        Text(message.tool?.summary ?? message.text).foregroundStyle(Theme.dim).lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
-                    .font(Theme.mono(.footnote))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Tool run \(message.tool?.name ?? "")")
-                if expanded {
-                    Text(message.tool?.detail ?? message.text)
-                        .font(Theme.mono(.caption))
-                        .foregroundStyle(Theme.soft)
-                        .textSelection(.enabled)
-                        .padding(9)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.bar, in: RoundedRectangle(cornerRadius: 6))
-                }
-            }
+            ToolRunView(tools: [message])
         case .agent:
             VStack(alignment: .leading, spacing: 8) {
                 Text(LocalizedStringKey(message.text)).textSelection(.enabled)
@@ -252,6 +237,73 @@ struct MessageView: View {
             Text(message.text).font(Theme.mono(.caption)).foregroundStyle(Theme.dim)
                 .frame(maxWidth: .infinity)
         }
+    }
+}
+
+/// ToolRunView is a run of tool calls as one quiet line, the way Claude Code
+/// writes it: "Read 2 files, ran 5 shell commands", the counts in bold. A tap
+/// opens it: one call shows what it ran and what came back; several show a
+/// line each, and each of those opens in turn.
+struct ToolRunView: View {
+    let tools: [Message]
+    @State private var expanded = false
+    /// open is the calls of a longer run whose result is showing.
+    @State private var open: Set<String> = []
+
+    private var names: [String] { tools.map { $0.tool?.name ?? "" } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Button { expanded.toggle() } label: {
+                ToolSummary.parts(names).reduce(Text("")) { line, part in
+                    line + Text(part.text).fontWeight(part.number ? .bold : .regular)
+                        .foregroundColor(part.number ? Theme.soft : Theme.dim)
+                }
+                .font(Theme.mono(.footnote))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(tools.count == 1 ? "Tool run \(names[0])" : "Tool runs: \(ToolSummary.text(names))")
+            if expanded {
+                ForEach(tools) { call in
+                    if tools.count == 1 {
+                        what(call)
+                        result(call)
+                    } else {
+                        Button { open.formSymmetricDifference([call.id]) } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                                Text(open.contains(call.id) ? "▾" : "▸").foregroundStyle(Theme.dim)
+                                what(call)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Tool run \(call.tool?.name ?? "")")
+                        if open.contains(call.id) { result(call) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// what is one call: the tool, then what it was asked.
+    private func what(_ call: Message) -> some View {
+        (Text(call.tool?.name ?? "tool").fontWeight(.semibold).foregroundColor(Theme.soft)
+            + Text("  " + (call.tool?.summary ?? call.text)).foregroundColor(Theme.dim))
+            .font(Theme.mono(.caption)).lineLimit(2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// result is what came back from one call.
+    private func result(_ call: Message) -> some View {
+        Text(call.tool?.detail ?? call.text)
+            .font(Theme.mono(.caption))
+            .foregroundStyle(Theme.soft)
+            .textSelection(.enabled)
+            .padding(9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.bar, in: RoundedRectangle(cornerRadius: 6))
     }
 }
 
