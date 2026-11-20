@@ -349,3 +349,21 @@ func TestSuperTemplate_UsesAssignForEveryHandOffToAnEngineer(t *testing.T) {
 		t.Errorf("SuperTemplate is missing the line %q", want)
 	}
 }
+
+// ini-232c: the inbox guide and the root messaging section say initech post is
+// deprecated and name both replacements: a send to super, and a watch with
+// --until for a default.
+func TestOperatorInboxGuide_SaysPostIsDeprecatedAndNamesTheReplacements(t *testing.T) {
+	const sentence = "initech post is deprecated and is removed in the next release"
+	texts := map[string]string{"messaging section": RootMessagingSection}
+	for role, tmpl := range rootCommunicationText() {
+		texts[role] = renderForRole(t, tmpl)
+	}
+	for name, text := range texts {
+		for _, want := range []string{sentence, "initech send super", "initech watch set", "--until"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s does not say %q", name, want)
+			}
+		}
+	}
+}

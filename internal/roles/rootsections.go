@@ -150,7 +150,7 @@ Agents on the same bead talk directly and post everything on the bead. The imple
 
 - Before messaging an agent you have not heard from: ` + "`" + `initech peek <agent> -n 5` + "`" + `.
 - After a dispatch, peek within two minutes to confirm the agent picked it up.
-- The operator's inbox, ` + "`" + `initech post` + "`" + `, and its five rules are in ` + "`" + `fleet/reference.md` + "`" + `.
+- The operator's inbox, ` + "`" + `initech post` + "`" + `, and its five rules are in ` + "`" + `fleet/reference.md` + "`" + `. initech post is deprecated and is removed in the next release: ask super with ` + "`" + `initech send super` + "`" + `, and for a default set a watch with ` + "`" + `initech watch set --until <time>` + "`" + `.
 `
 
 // RootBudgetSection is who may spend more time and tokens, and when.

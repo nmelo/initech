@@ -23,6 +23,12 @@ package roles
 const OperatorInboxGuide = `
 ### The operator's inbox: ` + "`" + `initech post` + "`" + `
 
+**initech post is deprecated and is removed in the next release.** Move off it
+now: ask a question of super with ` + "`" + `initech send super '<question>'` + "`" + `, and for a
+default you will act on unless told otherwise, set a watch:
+` + "`" + `initech watch set --until <time> --why '<what you will do>'` + "`" + `. Every post prints
+this on stderr until then.
+
 ` + "`" + `initech post` + "`" + ` hands the operator something and returns immediately. You keep
 working — nothing waits on it. Use it for the thing you would otherwise block
 on, or bury in your own pane and hope someone reads.

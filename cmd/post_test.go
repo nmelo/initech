@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/nmelo/initech/internal/tui"
 )
@@ -36,7 +35,9 @@ func postCLIExchange(t *testing.T, response tui.IPCResponse) <-chan tui.IPCReque
 			return
 		}
 		defer conn.Close()
-		_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+		// No clock: a client that never writes is ended by closing the
+		// connection at cleanup; the test binary's -timeout bounds the rest.
+		t.Cleanup(func() { conn.Close() })
 		scanner := tui.NewIPCScanner(conn)
 		if !scanner.Scan() {
 			return
@@ -72,13 +73,9 @@ func TestPostCLI_BodyModesPreserveTextAndAllNotices(t *testing.T) {
 			if got := out.String(); got != "posted p7\nre-post teaching\nthreshold teaching\nchime teaching\n" {
 				t.Fatalf("teaching order: %q", got)
 			}
-			select {
-			case req := <-requests:
-				if req.Action != "post" || req.Text != body || req.DefaultText != "keep working" || !req.Chime || req.Target != "" {
-					t.Fatalf("post wire: %+v", req)
-				}
-			case <-time.After(time.Second):
-				t.Fatal("request not captured")
+			req := <-requests // waits on the event, not a clock
+			if req.Action != "post" || req.Text != body || req.DefaultText != "keep working" || !req.Chime || req.Target != "" {
+				t.Fatalf("post wire: %+v", req)
 			}
 		})
 	}
@@ -184,5 +181,47 @@ func TestPostCLI_BoundedReader(t *testing.T) {
 	got, err := readPostBody(strings.NewReader(strings.Repeat("x", tui.MaxInboxBodyBytes)))
 	if err != nil || len(got) != tui.MaxInboxBodyBytes {
 		t.Fatalf("boundary body: %d, %v", len(got), err)
+	}
+}
+
+// ini-232c: every initech post call prints one stderr line that the command
+// is deprecated, and otherwise does exactly what it did: the same stdout, the
+// same request, the same result (a success stays a success, a refusal its
+// error).
+func TestPostCLI_SaysItIsDeprecatedAndChangesNothingElse(t *testing.T) {
+	const line = "initech post is deprecated and is removed in the next release\n"
+	for _, c := range []struct {
+		name    string
+		args    []string
+		resp    tui.IPCResponse
+		out     string
+		wantErr string
+	}{
+		{"post", []string{"a question", "--default", "keep going"}, tui.IPCResponse{OK: true, Data: "posted p7"}, "posted p7\n", ""},
+		{"mine", []string{"--mine"}, tui.IPCResponse{OK: true, Data: "p7 unread"}, "p7 unread\n", ""},
+		{"a refusal", []string{"--check", "p99"}, tui.IPCResponse{Error: "no item p99"}, "", "no item p99"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			requests := postCLIExchange(t, c.resp)
+			command := newPostCommand()
+			var out, errOut bytes.Buffer
+			command.SetOut(&out)
+			command.SetErr(&errOut)
+			command.SetArgs(c.args)
+			err := command.Execute()
+			if c.wantErr == "" && err != nil || c.wantErr != "" && (err == nil || err.Error() != c.wantErr) {
+				t.Fatalf("result %v, want %q", err, c.wantErr)
+			}
+			if out.String() != c.out {
+				t.Errorf("stdout %q, want it unchanged %q", out.String(), c.out)
+			}
+			if got := strings.Count(errOut.String(), line); got != 1 {
+				t.Errorf("stderr %q: the deprecation line %d times, want once", errOut.String(), got)
+			}
+			<-requests // the request still reaches window 1
+		})
+	}
+	if !strings.HasPrefix(newPostCommand().Long, strings.TrimSuffix(line, "\n")) {
+		t.Error("the help text does not start with the deprecation sentence")
 	}
 }

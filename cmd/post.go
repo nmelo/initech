@@ -12,6 +12,10 @@ import (
 
 func init() { rootCmd.AddCommand(newPostCommand()) }
 
+// postDeprecated is the line every initech post call prints on stderr. The
+// command still does all it was asked, so it keeps its exit code.
+const postDeprecated = "initech post is deprecated and is removed in the next release"
+
 // newPostCommand keeps flag state on the command, so separate invocations and
 // tests cannot inherit a previous post's mode or body source.
 func newPostCommand() *cobra.Command {
@@ -21,13 +25,17 @@ func newPostCommand() *cobra.Command {
 		Use:          "post [text] | --stdin | -f <file> | --check <id> | --mine | --withdraw <id>",
 		Short:        "Post an item to the operator inbox and keep working",
 		SilenceUsage: true,
-		Long: `Post from inside your agent's pane. Attribution comes from the connection.
+		Long: postDeprecated + `. Ask super with initech send super instead,
+and for a default you will act on, set a watch: initech watch set --until <time> --why '<line>'.
+
+Post from inside your agent's pane. Attribution comes from the connection.
 Use --default to state what you will do while waiting for an answer.
 Use --stdin or -f for multiline text and shell-safe bodies containing backticks.
 Replies arrive in your pane; --check recovers the recorded answer. Do not poll.
 Windows posting is unavailable in this release because TCP cannot identify your pane.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Fprintln(cmd.ErrOrStderr(), postDeprecated)
 			modes := 0
 			for _, set := range []bool{cmd.Flags().Changed("check"), mine, cmd.Flags().Changed("withdraw")} {
 				if set {
