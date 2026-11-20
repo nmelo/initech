@@ -29,7 +29,7 @@ let progressJSON = """
 
 /// An effort with nothing listed: the service may print null lists.
 let emptyProgressJSON = """
-[{"rig":"hover","prefix":"hov-a.","at":"2026-11-01T04:00:00Z","hours":3,"beads":null,"closed":0,"total":1,
+[{"rig":"rig-a","prefix":"rga-a.","at":"2026-11-01T04:00:00Z","hours":3,"beads":null,"closed":0,"total":1,
 "worked_by_engineers":0,"writing_review_only":0,"stages":null,"closed_recent":null,"critical_path":null,
 "engineers":null,"quiet":null,"notes":null}]
 """
@@ -136,17 +136,17 @@ final class ProgressStuckAfterTests: XCTestCase {
 
     func testTheCardNamesTheValueTheStuckAndTheWaiting() throws {
         let c = try card("""
-        [{"rig":"hover","prefix":"hov-w.","stuck_after":"20m","stuck_ids":["hov-w.5"],
-          "waiting":[{"id":"hov-w.1","owner":"eng1","wait":"parked for the release"},{"id":"hov-w.4","owner":"-","wait":"no comment"}]}]
+        [{"rig":"rig-a","prefix":"rga-w.","stuck_after":"20m","stuck_ids":["rga-w.5"],
+          "waiting":[{"id":"rga-w.1","owner":"eng1","wait":"parked for the release"},{"id":"rga-w.4","owner":"-","wait":"no comment"}]}]
         """)
         XCTAssertEqual(c.quietLabel, "Quiet 20m or more")
         XCTAssertEqual(c.waitingLabel, "Waiting 20m or more")
-        XCTAssertEqual(c.stuck, ["hov-w.5"])
-        XCTAssertEqual(c.waiting, ["hov-w.1 eng1: parked for the release", "hov-w.4 -: no comment"])
+        XCTAssertEqual(c.stuck, ["rga-w.5"])
+        XCTAssertEqual(c.waiting, ["rga-w.1 eng1: parked for the release", "rga-w.4 -: no comment"])
     }
 
     func testAReportWithoutTheFieldsReadsAsOneHourAndNothingListed() throws {
-        let c = try card(#"[{"rig":"hover"}]"#)
+        let c = try card(#"[{"rig":"rig-a"}]"#)
         XCTAssertEqual(c.quietLabel, "Quiet 1h or more")
         XCTAssertEqual(c.stuck, [])
         XCTAssertEqual(c.waiting, [])

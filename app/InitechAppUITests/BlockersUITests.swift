@@ -12,7 +12,7 @@ final class BlockersUITests: XCTestCase {
         """
         [{"rig":"initech","waiting":[{"pane":"super","text":"Your go for the patch release","recommendation":"ship it, it is small"}\(more)],\
         "stuck":[{"pane":"eng6","reason":"permission prompt open"}],"quiet":false},\
-        {"rig":"theguy","waiting":[],"stuck":[],"quiet":true}]
+        {"rig":"rig-b","waiting":[],"stuck":[],"quiet":true}]
         """
     }
 
@@ -66,7 +66,7 @@ final class BlockersUITests: XCTestCase {
         XCTAssertTrue(element("Your go for the patch release").waitForExistence(timeout: 10))
         XCTAssertTrue(element("Recommendation: ship it, it is small").exists)
         XCTAssertTrue(element("permission prompt open").exists)
-        XCTAssertTrue(element("quiet: theguy").exists, "the quiet rig is not named on the quiet line")
+        XCTAssertTrue(element("quiet: rig-b").exists, "the quiet rig is not named on the quiet line")
 
         try waitForFeed()
         server.setRawGET("blockers", blockers(#",{"pane":"super","text":"Keep the old link?","recommendation":""}"#))

@@ -9,8 +9,8 @@ final class StripDecodingTests: XCTestCase {
     }
 
     func testStrip_IsReadInTheAgentsOrder() throws {
-        let a = try agent(##"{"role":"super","alive":true,"strip":["#1 Release hover? Recommended yes.","#2 Register the CI runner?"]}"##)
-        XCTAssertEqual(a.strip, ["#1 Release hover? Recommended yes.", "#2 Register the CI runner?"])
+        let a = try agent(##"{"role":"super","alive":true,"strip":["#1 Release rig-a? Recommended yes.","#2 Register the CI runner?"]}"##)
+        XCTAssertEqual(a.strip, ["#1 Release rig-a? Recommended yes.", "#2 Register the CI runner?"])
     }
 
     /// Feed it nothing: a service that sends no strip, a null one and an empty one all decode.

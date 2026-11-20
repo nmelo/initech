@@ -68,7 +68,7 @@ final class PushRouteTests: XCTestCase {
     // bead while the Waiting on you list is on screen; a banner otherwise.
     func testTheForegroundRule() {
         let eng1 = PaneRef(rig: "demo", pane: "eng1"), eng2 = PaneRef(rig: "demo", pane: "eng2")
-        let other = PaneRef(rig: "theguy", pane: "eng1")
+        let other = PaneRef(rig: "rig-b", pane: "eng1")
         let bead = PushRoute.bead(rig: "demo", bead: "fx-1")
         let table: [(PushRoute, OnScreen, Bool)] = [
             (.pane(eng1), .pane(eng1), false),
@@ -151,6 +151,6 @@ final class PushRouteTests: XCTestCase {
         XCTAssertTrue(home.hasPane(PaneRef(rig: "demo", pane: "eng1")))
         XCTAssertFalse(home.hasPane(PaneRef(rig: "demo", pane: "eng2")), "a dead agent counts as running")
         XCTAssertFalse(home.hasPane(PaneRef(rig: "demo", pane: "eng9")))
-        XCTAssertFalse(home.hasPane(PaneRef(rig: "theguy", pane: "eng1")))
+        XCTAssertFalse(home.hasPane(PaneRef(rig: "rig-b", pane: "eng1")))
     }
 }

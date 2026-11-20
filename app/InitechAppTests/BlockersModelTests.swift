@@ -16,7 +16,7 @@ final class FakeBlockers: BlockersSource, @unchecked Sendable {
 /// The JSON GET /v1/blockers serves (internal/appserve TestBlockers_JSONShape).
 let blockersJSON = """
 [{"rig":"initech","waiting":[],"stuck":[],"quiet":true},\
-{"rig":"theguy","waiting":[{"pane":"super","text":"Your go","recommendation":""}],"stuck":[],"quiet":false}]
+{"rig":"rig-b","waiting":[{"pane":"super","text":"Your go","recommendation":""}],"stuck":[],"quiet":false}]
 """
 
 @MainActor
@@ -59,7 +59,7 @@ final class BlockersModelTests: XCTestCase {
 
     // AC2: a rig with nothing is one quiet row that opens nothing.
     func testQuietRigIsOneQuietRow() async {
-        let m = BlockersModel(source: FakeBlockers([RigBlockers(rig: "hover", waiting: [], stuck: [], quiet: true)]))
+        let m = BlockersModel(source: FakeBlockers([RigBlockers(rig: "rig-a", waiting: [], stuck: [], quiet: true)]))
         await m.reload()
         XCTAssertEqual(m.sections.count, 1)
         XCTAssertEqual(m.sections[0].rows.map(\.kind), [.quiet])
