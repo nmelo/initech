@@ -40,6 +40,9 @@ func newDeliverRigWith(t *testing.T, root string, lines *lineRecorder, before fu
 	owner, events, typed := dndPane(t, "eng4")
 	owner.receipts = newReceiptBook()
 	sup, _, _ := dndPane(t, "super")
+	// The panes close with the test, so a startup-gate watcher stops.
+	t.Cleanup(owner.markClosing)
+	t.Cleanup(sup.markClosing)
 	tu := newTestTUI(owner, sup)
 	if lines == nil {
 		lines = recordInitechLines(t)

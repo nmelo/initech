@@ -700,6 +700,13 @@ func (p *Pane) drainModalQueue() {
 		if paneHasModal(p) || !p.IsAlive() || p.InDND() {
 			return
 		}
+		// A pane still starting takes nothing yet (ini-krly): the drain
+		// waits for it to be ready (bounded, as the send path's own wait),
+		// and past that it runs again the moment the gate opens.
+		if !p.waitUntilReady(startupSettleCap) {
+			p.whenReady(sendReadyKey, time.Now(), p.startModalDrain)
+			return
+		}
 		m, ok := p.PopQueuedMessage()
 		if !ok {
 			return
