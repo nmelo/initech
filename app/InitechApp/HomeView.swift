@@ -164,6 +164,22 @@ struct HomeList: View {
         }
     }
 
+    /// reachLine says the first read of the list has no answer yet and is still
+    /// trying. It takes no room until then, or once anything loaded or failed.
+    @ViewBuilder private var reachLine: some View {
+        if let since = home.firstReadSince {
+            TimelineView(.periodic(from: since, by: 1)) { clock in
+                if ReachLine.of(waited: clock.date.timeIntervalSince(since)) == .trying {
+                    Text("cannot reach the mac yet. still trying…")
+                        .font(Theme.mono(.footnote)).foregroundStyle(Theme.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20).padding(.vertical, 12)
+                        .accessibilityIdentifier("reach-line")
+                }
+            }
+        }
+    }
+
     /// panesList is his pinned panes.
     private var panesList: some View {
         List(selection: Binding(get: { home.selection }, set: { home.listChose($0, besideThePane: besideThePane) })) {
@@ -205,6 +221,7 @@ struct HomeList: View {
         .scrollContentBackground(.hidden)
         .environment(\.editMode, $editMode)
         .refreshable { await home.reload() }
+        .safeAreaInset(edge: .top, spacing: 0) { reachLine }
     }
 
     /// rigsList is the Rigs screen (RigsAccordion). It is a screen of the bottom

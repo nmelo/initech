@@ -162,6 +162,8 @@ struct PaneView: View {
         // and its round back button are hidden. The title stays for VoiceOver.
         .navigationTitle(row?.name ?? model.ref.pane)
         .toolbar(.hidden, for: .navigationBar)
+        // Hiding the bar turns off the system's swipe back from the left edge; stacked, it is turned back on.
+        .background { if sizeClass == .compact { BackSwipe().frame(width: 0, height: 0) } }
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task {
             await model.open()

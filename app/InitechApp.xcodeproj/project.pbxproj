@@ -75,6 +75,7 @@
 		F21D7B4DE2BF7A525CCBB046 /* pins.json in Resources */ = {isa = PBXBuildFile; fileRef = 581E4FF2F0E09E47E97E6AD8 /* pins.json */; };
 		F229D08EA6EC0CC2F4755CF8 /* devices-put.json in Resources */ = {isa = PBXBuildFile; fileRef = 433D0F22C6C0914DEA8D1554 /* devices-put.json */; };
 		F9340CE4EE6DEDCD61559690 /* PushRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF47256DDF89B763C9624D69 /* PushRouteTests.swift */; };
+		FB83AD96F34A98773E0ADF06 /* BackSwipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3191113A71619949DA35AAA8 /* BackSwipe.swift */; };
 		FBB3609DBA918383A9D51E2A /* conversation-page-1.json in Resources */ = {isa = PBXBuildFile; fileRef = 6DA431684772BA3BA75B621C /* conversation-page-1.json */; };
 		FC8B12D6258E85AC5817671F /* feed-waiting_item.json in Resources */ = {isa = PBXBuildFile; fileRef = A58D5797D1CB6A67BAA9824E /* feed-waiting_item.json */; };
 /* End PBXBuildFile section */
@@ -112,6 +113,7 @@
 		2DF1A52E1AA6AD143C33B281 /* InitechApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = InitechApp.entitlements; sourceTree = "<group>"; };
 		2F95958437420FF2A2A7F734 /* blockers.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = blockers.json; sourceTree = "<group>"; };
 		317938B4B8813532A9AD217E /* status.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = status.json; sourceTree = "<group>"; };
+		3191113A71619949DA35AAA8 /* BackSwipe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackSwipe.swift; sourceTree = "<group>"; };
 		345C809540C96C533CD52202 /* PushRegistrar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrar.swift; sourceTree = "<group>"; };
 		38311B4C974E91A7AF9834C0 /* LiveServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveServiceTests.swift; sourceTree = "<group>"; };
 		38DE6C64E6074FD3DA0E9F8C /* PaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneView.swift; sourceTree = "<group>"; };
@@ -234,6 +236,7 @@
 			children = (
 				507BBB42FCC3688C96662A86 /* AppLock.swift */,
 				08612C6B0EEC57AB3F1801AA /* Assets.xcassets */,
+				3191113A71619949DA35AAA8 /* BackSwipe.swift */,
 				10D5A8C8CF2881FB2236459D /* BlockersModel.swift */,
 				666FD729244613CF6E86345D /* BlockersView.swift */,
 				C279EBB3EEACABD81ACE0EBE /* BuildInfo.swift */,
@@ -519,6 +522,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B2F2B4FB55FCDA56E935F9F9 /* AppLock.swift in Sources */,
+				FB83AD96F34A98773E0ADF06 /* BackSwipe.swift in Sources */,
 				40E7FF7EA5D5C02FA1140670 /* BlockersModel.swift in Sources */,
 				ED99CBF96801ED11252F0E12 /* BlockersView.swift in Sources */,
 				39E88FB80C949C1AD8CBE483 /* BuildInfo.swift in Sources */,

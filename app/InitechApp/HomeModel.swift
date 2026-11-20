@@ -76,6 +76,9 @@ final class HomeModel: ObservableObject {
     /// failed to load says nothing about what is pinned.
     var showsNoPinsLine: Bool { pinsLoaded && pins.isEmpty }
     private var pinsLoaded = false
+    /// firstReadSince is when the list's first read began, while it has no
+    /// answer yet: the list says it is still trying once that has gone on (ReachLine).
+    @Published private(set) var firstReadSince: Date?
 
     /// rows is the home list: his pins in his order, each joined to its status.
     var rows: [PaneRow] {
@@ -146,6 +149,7 @@ final class HomeModel: ObservableObject {
 
     /// reload reads the pins, the status of every running rig and what waits.
     func reload() async {
+        if !pinsLoaded && firstReadSince == nil { firstReadSince = Date() }
         do {
             async let p = service.pins()
             async let s = service.status()
@@ -157,6 +161,7 @@ final class HomeModel: ObservableObject {
         } catch {
             note(error)
         }
+        firstReadSince = nil
         await refreshWaiting()
     }
 

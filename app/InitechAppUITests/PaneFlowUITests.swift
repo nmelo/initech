@@ -401,6 +401,19 @@ final class PaneFlowUITests: XCTestCase {
         try assertStillReading("after Done")
     }
 
+    /// On iPhone the pane hides the system's bar; a swipe in from the left edge still goes back to the list.
+    func testIPhone_ASwipeFromTheLeftEdge_GoesBackToTheList() throws {
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom == .pad, "the pane covers the list only on iPhone")
+        try XCTSkipIf(server == nil, "fixture only")
+        try openPaneA()
+        XCTAssertFalse(row(paneA).isHittable, "the list was on screen before the swipe: the test would show nothing")
+        let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.0, dy: 0.5))
+        edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)))
+        XCTAssertTrue(row(paneA).waitForExistence(timeout: 10), "the swipe from the left edge did not go back to the list")
+        XCTAssertTrue(row(paneA).isHittable, "the list is not on screen after the swipe")
+        XCTAssertFalse(app.buttons["BackButton"].exists, "the pane is still open after the swipe")
+    }
+
     /// Tapping a row in Rigs opens that pane though it is not pinned: beside the
     /// list on iPad, over it on iPhone, where the way back returns to Rigs.
     func testRigs_TappingARowOpensThatPane_PinnedOrNot() throws {
