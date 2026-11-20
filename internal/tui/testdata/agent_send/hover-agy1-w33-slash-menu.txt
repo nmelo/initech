@@ -5,7 +5,7 @@
   ▄▀▀      ▀▀▄
 
   Antigravity CLI 1.5.12
-  nmelo.cu@gmail.com
+  operator@mail.test
   Gemini 4 Carbon (High)
   ~/Desktop/Projects/hover/agy1
 

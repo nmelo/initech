@@ -5,7 +5,7 @@
   ▄▀▀      ▀▀▄
 
   Antigravity CLI 1.5.12
-  nmelo.cu@gmail.com (Google AI U
+  operator@mail.test (Google AI U
   Gemini 4 Carbon (High)
   ~/qnf/eng2
 
