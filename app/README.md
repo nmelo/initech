@@ -211,6 +211,8 @@ first.
   blockers, which is the service's name for that list.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation, under its own header with the way
   back. On iPhone a swipe in from the left edge goes back too (`BackSwipe.swift` keeps the system's swipe
-  working with the bar hidden). A run of tool calls is one line (`InitechCore/.../ToolSummary.swift`). Above the input line, which ends the
+  working with the bar hidden). A run of tool calls is one line (`InitechCore/.../ToolSummary.swift`). While the pane sits at something (a dialog,
+  a banner, unsent text) its last screen lines show in a block named "on its screen now"
+  (`InitechCore/.../ScreenTail.swift` tidies them). Above the input line, which ends the
   screen, sits the pane's list strip when its agent set one (`strip` in the status answer): what waits on you, one
   line per item.

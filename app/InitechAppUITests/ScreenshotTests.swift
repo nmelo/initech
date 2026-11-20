@@ -59,7 +59,7 @@ final class ScreenshotTests: XCTestCase {
 
         element(app, "theguy").tap()
         XCTAssertTrue(element(app, "Do you want to make this edit").waitForExistence(timeout: 10),
-                      "the dialog's screen lines are not above the key strip")
+                      "the dialog's screen lines are not on the pane screen")
         // Expand before typing: the keyboard would cover the tool run.
         XCTAssertFalse(element(app, "delivered to super").exists, "the tool run is expanded before a tap")
         app.buttons["Tool run Bash"].tap()

@@ -248,7 +248,8 @@ struct HomeList: View {
         .font(Theme.mono(.subheadline))
         .buttonStyle(.plain)
         .foregroundStyle(Theme.red)
-        .padding(.horizontal, 20).padding(.vertical, 13)
+        .padding(.horizontal, 20).padding(.vertical, 7)
+        .frame(minHeight: Theme.headerHeight)
         .background(Theme.bg)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
         .accessibilityElement(children: .contain)

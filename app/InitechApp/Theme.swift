@@ -28,6 +28,11 @@ enum Theme {
     /// 320 points and 15% more.
     static let sidebarWidth: CGFloat = 368
 
+    /// headerHeight is the least height of a header at the top of the screen:
+    /// the list's prompt line and the pane's two lines, which sit side by side
+    /// on iPad and must end level.
+    static let headerHeight: CGFloat = 56
+
     /// barHeight is the least height of a bar at the bottom of the screen: the
     /// list's keys and the pane's input line, which sit side by side on iPad and
     /// must end level.

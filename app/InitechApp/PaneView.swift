@@ -20,6 +20,22 @@ struct PaneView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var row: PaneRow? { home.row(for: model.ref) }
+    /// screenTail is the pane's last screen lines while it sits at something.
+    var screenTail: [String]? {
+        #if DEBUG
+        if let sample = UITestHooks.screenLines { return sample }
+        #endif
+        guard let row, row.atDialog else { return nil }
+        return row.screen
+    }
+    /// sampleScreen is true when those lines are the debug sample, not the pane's own.
+    var sampleScreen: Bool {
+        #if DEBUG
+        return UITestHooks.screenLines != nil
+        #else
+        return false
+        #endif
+    }
     /// strip is the pane's list strip, as its agent set it.
     var strip: [String] {
         #if DEBUG
@@ -151,8 +167,8 @@ struct PaneView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16).padding(.vertical, 6)
             }
-            if let row, row.atDialog, let screen = row.screen, !screen.isEmpty {
-                ScreenLines(lines: screen)
+            if let screen = screenTail, !screen.isEmpty {
+                ScreenLines(lines: screen, sample: sampleScreen)
             }
             if !strip.isEmpty { StripView(items: strip, sample: sampleStrip) }
             InputBar(draft: $draft) { text in Task { await model.send(text) } }
@@ -208,6 +224,7 @@ extension PaneView {
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 7)
+        .frame(minHeight: Theme.headerHeight)
         .background(Theme.bg)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
@@ -416,21 +433,45 @@ struct StripView: View {
     }
 }
 
-/// ScreenLines is the pane's last screen lines when it is at a dialog or banner.
+/// ScreenLines is the last lines of the pane's own terminal screen, shown
+/// while the pane sits at something (a dialog, a banner, text left unsent in
+/// its input box): a band above the message line, named so it explains
+/// itself, with the lines as the terminal drew them. A long line scrolls
+/// sideways and is never wrapped, so a dialog keeps its shape.
 struct ScreenLines: View {
     let lines: [String]
+    /// sample marks the lines as made-up text from the debug option.
+    var sample = false
 
     var body: some View {
-        ScrollView(.horizontal) {
-            Text(lines.joined(separator: "\n"))
-                .font(Theme.mono(.caption2))
-                .padding(.horizontal, 14).padding(.vertical, 9)
+        let tidy = ScreenTail.tidy(lines)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("on its screen now").font(Theme.mono(.caption2, .bold)).foregroundStyle(Theme.orange)
+                if sample { Text("SAMPLE TEXT").font(Theme.mono(.caption2, .bold)).foregroundStyle(Theme.red) }
+                Rectangle().fill(Theme.line).frame(height: 1)
+            }
+            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 6)
+            ScrollView([.horizontal, .vertical]) {
+                Text(tidy.joined(separator: "\n"))
+                    .font(Theme.mono(.caption)).foregroundStyle(Theme.text)
+                    .lineSpacing(2)
+                    .fixedSize()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.bottom, 10)
+            }
+            .defaultScrollAnchor(.bottomLeading)
+            .scrollBounceBehavior(.basedOnSize, axes: [.horizontal, .vertical])
+            .frame(maxHeight: 150)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, maxHeight: 160, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.bar)
-        .foregroundStyle(Theme.text)
-        .overlay(alignment: .leading) { Rectangle().fill(Theme.orange).frame(width: 2) }
+        .overlay(alignment: .leading) { Rectangle().fill(Theme.orange).frame(width: 3) }
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("On its screen now: \(tidy.joined(separator: ", "))")
+        .accessibilityIdentifier("pane-screen")
     }
 }
 

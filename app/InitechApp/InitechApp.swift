@@ -274,6 +274,14 @@ extension UITestHooks {
         return args[i + 1].split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
+    /// screenLines is `-debug-screenlines <lines separated by |>`: sample screen
+    /// lines for the pane's "on its screen now" block, to look at it when no pane sits at anything.
+    static var screenLines: [String]? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-debug-screenlines"), i + 1 < args.count else { return nil }
+        return args[i + 1].split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+    }
+
     /// focus is `-debug-focus`: the pane's message field takes the keyboard as it appears.
     static var focus: Bool { ProcessInfo.processInfo.arguments.contains("-debug-focus") }
 
