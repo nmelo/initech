@@ -8,6 +8,8 @@ import Foundation
 /// code (the app's own hooks are compiled under DEBUG).
 public enum DebugScreen: Equatable, Sendable {
     case rigs, blockers, progress
+    /// lock is the lock screen drawn to be looked at: nothing is locked and Face ID is not asked.
+    case lock
     case pane(rig: String, pane: String)
     /// rigsPane is the Rigs screen with a pane opened from it.
     case rigsPane(rig: String, pane: String)
@@ -23,6 +25,7 @@ public enum DebugScreen: Equatable, Sendable {
         case "rigs": return .rigs
         case "blockers": return .blockers
         case "progress": return .progress
+        case "lock": return .lock
         default:
             let fromRigs = name.hasPrefix("rigs:")
             guard fromRigs || name.hasPrefix("pane:") else { return nil }

@@ -68,7 +68,7 @@ struct BlockersView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
-        .navigationTitle("Blockers")
+        .navigationTitle("Waiting")
         .refreshable { await blockers.reload() }
         .task { await blockers.reload() }
     }

@@ -90,7 +90,7 @@ final class PushTapUITests: XCTestCase {
         server.setRawGET("blockers", blockers(footer: 14))
         launch()
         XCTAssertTrue(element("eng1 pinned").waitForExistence(timeout: 20))
-        app.buttons["Blockers"].tap()
+        app.buttons["Waiting"].tap()
         XCTAssertTrue(element("Footer question 1").waitForExistence(timeout: 10), "Blockers did not open")
         RunLoop.current.run(until: Date().addingTimeInterval(1))
         XCTAssertTrue(inView(element("Footer question 1")), "control: the first row is not in view, so in-view reads nothing")
@@ -208,7 +208,7 @@ final class PushTapUITests: XCTestCase {
     // reads again; anywhere else: a banner.
     func testABeadPushWhileOpenShowsABannerOnlyAwayFromTheList() throws {
         launchAllowingNotifications()
-        app.buttons["Blockers"].tap()
+        app.buttons["Waiting"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["waiting-initech-fx-1"].waitForExistence(timeout: 10))
         RunLoop.current.run(until: Date().addingTimeInterval(1))
         let before = gets("/v1/blockers")

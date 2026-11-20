@@ -50,6 +50,10 @@ struct RootView: View {
             PairingView { code in try lock.pair(with: code) }
         case .locked:
             LockView { await lock.unlock() }
+        #if DEBUG
+        case .unlocked where UITestHooks.screen == .lock:
+            LockView {} // -debug-screen lock: the lock screen to look at; nothing is locked
+        #endif
         case .unlocked(let pairing):
             MainView(home: HomeModel(service: HTTPService(pairing: pairing)), push: push, inbox: inbox) {
                 Task {
@@ -69,12 +73,30 @@ struct LockView: View {
     let unlock: () async -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "lock.fill").font(.largeTitle)
-            Text("initech is locked")
-            Button("Unlock") { Task { await unlock() } }
-                .buttonStyle(.borderedProminent)
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 14) {
+                // The list's own header line, larger: a prompt that stopped at "locked".
+                HStack(spacing: 0) {
+                    Text("initech").font(Theme.mono(.title2, .bold)).foregroundStyle(Theme.bright)
+                    Text(" ❯ locked").font(Theme.mono(.title2)).foregroundStyle(Theme.text)
+                    Rectangle().fill(Theme.red).frame(width: 12, height: 24).padding(.leading, 8)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("initech is locked")
+                Text("unlock to see your panes.").font(Theme.mono(.footnote)).foregroundStyle(Theme.dim)
+                Button { Task { await unlock() } } label: {
+                    Text("❯ unlock").font(Theme.mono(.body, .bold)).foregroundStyle(Theme.red)
+                        .padding(.horizontal, 22).frame(minHeight: Theme.barHeight)
+                        .background(Theme.bar, in: RoundedRectangle(cornerRadius: 6))
+                        .overlay { RoundedRectangle(cornerRadius: 6).stroke(Theme.red.opacity(0.55), lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Unlock")
+                .padding(.top, 14)
+            }
         }
+        .preferredColorScheme(.dark)
     }
 }
 

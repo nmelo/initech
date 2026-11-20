@@ -51,7 +51,7 @@ final class BlockersUITests: XCTestCase {
     // the feed alone; a real tap opens the pane and closes the sheet.
     func testABlockerFollowsTheFeedAndATapOpensItsPane() throws {
         launch()
-        app.buttons["Blockers"].tap()
+        app.buttons["Waiting"].tap()
         XCTAssertTrue(element("Your go for the patch release").waitForExistence(timeout: 10))
         XCTAssertTrue(element("Recommendation: ship it, it is small").exists)
         XCTAssertTrue(element("permission prompt open").exists)

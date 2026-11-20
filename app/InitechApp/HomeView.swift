@@ -73,7 +73,7 @@ extension MainView {
     /// screen is what is on screen for the push rule: a sheet over
     /// everything, else the open pane.
     var screen: OnScreen {
-        if tab == .blockers { return .waitingList }
+        if tab == .waiting { return .waitingList }
         // An open pane is on screen from any other screen of the bar: beside
         // the list on iPad, over it on iPhone.
         return home.selection.map { .pane($0) } ?? .other
@@ -99,7 +99,7 @@ extension MainView {
             }
         case let .bead(rig, bead):
             blockersFocus = BlockerFocus(rig: rig, bead: bead)
-            tab = .blockers
+            tab = .waiting
         }
     }
 }
@@ -110,8 +110,9 @@ extension MainView {
     func open(debug screen: DebugScreen) {
         switch screen {
         case .rigs: tab = .rigs
-        case .blockers: tab = .blockers
+        case .blockers: tab = .waiting
         case .progress: tab = .progress
+        case .lock: break // drawn by the app's root, over nothing
         case let .pane(rig, pane): home.open(PaneRef(rig: rig, pane: pane))
         case let .rigsPane(rig, pane):
             tab = .rigs
@@ -124,7 +125,7 @@ extension MainView {
 /// ListTab is a screen of the list side's bottom bar; its name is what the
 /// prompt header shows.
 enum ListTab: String, Equatable {
-    case pinned, rigs, blockers, progress
+    case pinned, rigs, waiting, progress
 }
 
 /// HomeList is the list side of the app, drawn as a terminal would: a prompt
@@ -149,7 +150,7 @@ struct HomeList: View {
             switch tab {
             case .pinned: panesList
             case .rigs: rigsList
-            case .blockers: BlockersScreen(home: home, focus: blockersFocus, arrived: inbox.arrived)
+            case .waiting: BlockersScreen(home: home, focus: blockersFocus, arrived: inbox.arrived)
             case .progress: ProgressScreen(home: home)
             }
         }
@@ -280,7 +281,7 @@ struct HomeList: View {
             Spacer()
             key(.rigs, "2 rigs", spoken: "Rigs")
             Spacer()
-            key(.blockers, "3 blockers", spoken: "Blockers", count: home.blockerCount)
+            key(.waiting, "3 waiting", spoken: "Waiting", count: home.blockerCount)
             Spacer()
             key(.progress, "4 progress", spoken: "Progress")
         }

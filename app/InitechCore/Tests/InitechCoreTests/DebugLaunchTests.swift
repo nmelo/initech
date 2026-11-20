@@ -9,6 +9,7 @@ final class DebugLaunchTests: XCTestCase {
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "rigs"]), .rigs)
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "blockers"]), .blockers)
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "progress"]), .progress)
+        XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "lock"]), .lock, "the lock screen, to look at, with nothing locked")
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "rigs:hover/eng6"]), .rigsPane(rig: "hover", pane: "eng6"),
                        "Rigs with a pane opened from it")
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-unlocked", "-debug-screen", "progress"]), .progress)

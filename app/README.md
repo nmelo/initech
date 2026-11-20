@@ -200,14 +200,15 @@ first.
 - `InitechApp/Theme.swift`: the app's look, a terminal's: near-black, monospaced, one red for what can be
   pressed, a colour per pane state. Screens take their colours and type from here.
 - `InitechApp/HomeModel.swift`, `HomeView.swift`: the list side. It draws its own prompt header and a bottom bar
-  of four keys, one per screen (`ListTab`): Pinned, Rigs, Blockers, Progress. While the first read has no answer
+  of four keys, one per screen (`ListTab`): Pinned, Rigs, Waiting, Progress. While the first read has no answer
   yet, Pinned says it is still trying (`InitechCore/.../ReachLine.swift`). Pinned ends with the build line:
   version, build, commit. No screen opens as a sheet.
 - `InitechApp/RigsView.swift`: Rigs. Every rig's header always shows; scrolling opens one rig at a time
   (`InitechCore/.../RigStack.swift` is the arithmetic), and a row slides left to pin or unpin. Tapping a row
   opens that pane, pinned or not: beside the list on iPad, over it on iPhone, where the way back returns to Rigs.
-- `InitechApp/BlockersView.swift`, `ProgressView.swift`, `OperatorScreens.swift`: Blockers (rigs with nothing to
-  say share one line) and Progress.
+- `InitechApp/BlockersView.swift`, `ProgressView.swift`, `OperatorScreens.swift`: Waiting (the questions that
+  wait on you and the panes that look stuck; rigs with neither share one line) and Progress. The code still says
+  blockers, which is the service's name for that list.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation, under its own header with the way
   back. On iPhone a swipe in from the left edge goes back too (`BackSwipe.swift` keeps the system's swipe
   working with the bar hidden). A run of tool calls is one line (`InitechCore/.../ToolSummary.swift`). Above the input line, which ends the
