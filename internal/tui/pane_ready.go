@@ -75,9 +75,9 @@ func (p *Pane) holdWhileStarting(text string, enter bool, o sendOrigin) SendVerd
 }
 
 // waitUntilReady waits, at most max, for the pane to stop reading starting:
-// the child quiet for settleStable() (this opens the gate), or the gate
-// opened elsewhere (the maintenance tick, a send's wait). It reports false at
-// max, or when the pane closes, still starting.
+// the child quiet for settleStable() (this opens the gate), the gate opened
+// elsewhere (the maintenance tick, a send's wait), or its startup window
+// over. It reports false at max, or when the pane closes, still starting.
 func (p *Pane) waitUntilReady(max time.Duration) bool {
 	stable := settleStable()
 	deadline := time.Now().Add(max)

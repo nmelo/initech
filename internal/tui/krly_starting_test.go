@@ -215,21 +215,32 @@ func TestStartingSend_ASettledPaneIsTypedAtOnceAndAStoppedOneRefused(t *testing.
 	})
 }
 
-// R1: a pane still noisy (or silent) when the drain's bounded wait runs out:
-// the drain opens the gate and types it, as the send path always did at that
-// bound; never before the gate is open.
-func TestStartingSend_APaneNeverQuietIsTypedAtTheBoundWithTheGateOpen(t *testing.T) {
+// R1 (lead read of c03dee6): a pane never quiet stays held for its whole
+// startup window: not typed at 15 s (the send path's settle cap) nor at 59 s,
+// and typed once when the window ends at 60 s.
+func TestStartingSend_APaneNeverQuietIsTypedWhenItsStartupWindowEnds(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
-		i35wGateClock(t, time.Hour, 3*time.Second) // a short bound, set once, first
+		// Never quiet, and the production settle cap (15 s): the bound the
+		// drain must not stop at.
+		i35wGateClock(t, time.Hour, StartupSettleBound)
 		p, typed := startingPane(t, "a")
+		start := time.Now()
+		p.mu.Lock()
+		p.startedAt = start
+		p.mu.Unlock()
 		p.holdWhileStarting("[from eng1] patient", true, sendOrigin{From: "eng1"})
-		time.Sleep(time.Second)
-		if typed() != "" || p.QueueLen() != 1 || !p.startingNow(time.Now()) {
-			t.Fatalf("typed %q queue %d before the bound", typed(), p.QueueLen())
+		at := func(d time.Duration) { time.Sleep(time.Until(start.Add(d))) }
+		at(15 * time.Second)
+		if typed() != "" || p.QueueLen() != 1 {
+			t.Fatalf("at 15 s: typed %q queue %d; want it still held", typed(), p.QueueLen())
 		}
-		time.Sleep(5 * time.Second) // past the bound: the drain opens the gate
-		if strings.Count(typed(), "patient") != 1 || p.startingNow(time.Now()) {
-			t.Fatalf("typed %q, want it once at the bound, with the gate open", typed())
+		at(59 * time.Second)
+		if typed() != "" || p.QueueLen() != 1 {
+			t.Fatalf("at 59 s: typed %q queue %d; want it still held", typed(), p.QueueLen())
+		}
+		at(61 * time.Second)
+		if strings.Count(typed(), "patient") != 1 {
+			t.Fatalf("after 60 s: typed %q, want it once", typed())
 		}
 	})
 }

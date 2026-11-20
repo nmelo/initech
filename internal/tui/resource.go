@@ -700,13 +700,16 @@ func (p *Pane) drainModalQueue() {
 		if paneHasModal(p) || !p.IsAlive() || p.InDND() {
 			return
 		}
-		// A pane still starting takes nothing yet (ini-krly): the drain
-		// waits for it to be ready, bounded as the send path's own wait
-		// always was; at that bound the gate opens and the mail goes in
-		// (the ini-hbj4 contract: a popped message is never dropped).
-		if !p.waitUntilReady(settleCap()) {
-			LogWarn("send", "delivering into a pane that never settled after start (cap reached)", "pane", p.name)
-			p.openGateNow()
+		// A pane still starting takes nothing yet (ini-krly, R1): the drain
+		// waits for it to be ready, at most until its startup window ends
+		// (startedAt + startupGateWindow), when it no longer reads starting.
+		// The wait comes before the pop, so the message stays queued and in
+		// held.yaml; a pane that closes meanwhile keeps it there.
+		p.mu.Lock()
+		windowEnd := p.startedAt.Add(startupGateWindow)
+		p.mu.Unlock()
+		if !p.waitUntilReady(time.Until(windowEnd)) {
+			return
 		}
 		m, ok := p.PopQueuedMessage()
 		if !ok {
