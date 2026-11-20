@@ -10,8 +10,9 @@ import UIKit
 /// to that rig.
 struct RigsAccordion: View {
     @ObservedObject var home: HomeModel
-    /// besideThePane is true on iPad, where the list sits beside the open pane:
-    /// there, tapping a row opens that pane's conversation, pinned or not.
+    /// besideThePane is true on iPad, where the list sits beside the open pane
+    /// and the row whose pane is open is marked. On either device, tapping a
+    /// row opens that pane's conversation, pinned or not.
     var besideThePane = false
     @ScaledMetric(relativeTo: .body) private var headerHeight: CGFloat = 46
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 62
@@ -139,7 +140,7 @@ struct RigsAccordion: View {
                     .contentShape(Rectangle())
                     .onTapGesture { tapped(pane.row.ref) }
                     .accessibilityValue(pane.pinned ? "pinned" : "")
-                    .accessibilityAddTraits(besideThePane ? .isButton : [])
+                    .accessibilityAddTraits(.isButton)
                 }
                 .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1).padding(.leading, 20) }
             }
@@ -152,12 +153,12 @@ extension RigsAccordion {
     /// shown is true for the row whose pane is open beside the list.
     func shown(_ ref: PaneRef) -> Bool { besideThePane && home.selection == ref }
 
-    /// tapped closes a row left slid open; otherwise, beside the pane, it opens
-    /// that row's conversation, pinned or not.
+    /// tapped closes a row left slid open; otherwise it opens that row's
+    /// conversation, pinned or not.
     func tapped(_ ref: PaneRef) {
         if openRow != nil {
             withAnimation(.snappy) { openRow = nil }
-        } else if besideThePane {
+        } else {
             home.open(ref)
         }
     }

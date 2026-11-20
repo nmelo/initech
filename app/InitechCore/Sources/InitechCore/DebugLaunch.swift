@@ -9,10 +9,13 @@ import Foundation
 public enum DebugScreen: Equatable, Sendable {
     case rigs, blockers, progress
     case pane(rig: String, pane: String)
+    /// rigsPane is the Rigs screen with a pane opened from it.
+    case rigsPane(rig: String, pane: String)
 
     /// parse reads `-debug-screen <name>` from the launch arguments: rigs,
-    /// blockers, progress, or pane:<rig>/<pane>. No argument, or a name
-    /// it does not know, is nil: the app opens on Panes as it always does.
+    /// blockers, progress, pane:<rig>/<pane>, or rigs:<rig>/<pane> (that pane
+    /// opened from Rigs). No argument, or a name it does not know, is nil: the
+    /// app opens on Pinned as it always does.
     public static func parse(_ args: [String]) -> DebugScreen? {
         guard let i = args.firstIndex(of: "-debug-screen"), i + 1 < args.count else { return nil }
         let name = args[i + 1]
@@ -21,10 +24,12 @@ public enum DebugScreen: Equatable, Sendable {
         case "blockers": return .blockers
         case "progress": return .progress
         default:
-            guard name.hasPrefix("pane:") else { return nil }
-            let parts = name.dropFirst("pane:".count).split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
+            let fromRigs = name.hasPrefix("rigs:")
+            guard fromRigs || name.hasPrefix("pane:") else { return nil }
+            let parts = name.dropFirst(5).split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
-            return .pane(rig: String(parts[0]), pane: String(parts[1]))
+            let (rig, pane) = (String(parts[0]), String(parts[1]))
+            return fromRigs ? .rigsPane(rig: rig, pane: pane) : .pane(rig: rig, pane: pane)
         }
     }
 }

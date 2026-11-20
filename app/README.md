@@ -203,8 +203,8 @@ first.
   of four keys, one per screen (`ListTab`): Pinned, Rigs, Blockers, Progress. Pinned ends with the build line:
   version, build, commit. No screen opens as a sheet.
 - `InitechApp/RigsView.swift`: Rigs. Every rig's header always shows; scrolling opens one rig at a time
-  (`InitechCore/.../RigStack.swift` is the arithmetic), and a row slides left to pin or unpin. On iPad, tapping
-  a row opens that pane beside the list, pinned or not.
+  (`InitechCore/.../RigStack.swift` is the arithmetic), and a row slides left to pin or unpin. Tapping a row
+  opens that pane, pinned or not: beside the list on iPad, over it on iPhone, where the way back returns to Rigs.
 - `InitechApp/BlockersView.swift`, `ProgressView.swift`, `OperatorScreens.swift`: Blockers (rigs with nothing to
   say share one line) and Progress.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation, under its own header with the way

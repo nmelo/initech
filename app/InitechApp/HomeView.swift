@@ -22,13 +22,17 @@ struct MainView: View {
         // The list draws its own header and bottom bar, so its navigation bar is
         // hidden. On iPad the list always sits beside the pane (balanced, all
         // columns): with no bar there is no button to bring a hidden list back.
-        NavigationSplitView(columnVisibility: .constant(.all)) {
+        // Stacked (iPhone), the pane covers the list whenever one is open, from
+        // whichever screen of the bar it was opened; going back closes it.
+        NavigationSplitView(columnVisibility: .constant(.all), preferredCompactColumn: Binding(
+            get: { home.selection == nil ? .sidebar : .detail },
+            set: { if $0 != .detail { home.selection = nil } })) {
             HomeList(home: home, push: push, inbox: inbox, tab: $tab,
                      blockersFocus: blockersFocus, besideThePane: sizeClass == .regular)
                 .toolbar(.hidden, for: .navigationBar)
         } detail: {
             if let ref = home.selection {
-                PaneView(model: PaneModel(service: home.service, ref: ref), home: home)
+                PaneView(model: PaneModel(service: home.service, ref: ref), home: home, back: tab.rawValue)
                     .id(ref)
             } else {
                 ZStack {
@@ -69,7 +73,8 @@ extension MainView {
     /// everything, else the open pane.
     var screen: OnScreen {
         if tab == .blockers { return .waitingList }
-        if tab == .rigs || tab == .progress { return .other }
+        // An open pane is on screen from any other screen of the bar: beside
+        // the list on iPad, over it on iPhone.
         return home.selection.map { .pane($0) } ?? .other
     }
 
@@ -107,6 +112,9 @@ extension MainView {
         case .blockers: tab = .blockers
         case .progress: tab = .progress
         case let .pane(rig, pane): home.open(PaneRef(rig: rig, pane: pane))
+        case let .rigsPane(rig, pane):
+            tab = .rigs
+            home.open(PaneRef(rig: rig, pane: pane))
         }
     }
 }

@@ -9,6 +9,8 @@ final class DebugLaunchTests: XCTestCase {
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "rigs"]), .rigs)
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "blockers"]), .blockers)
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "progress"]), .progress)
+        XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "rigs:hover/eng6"]), .rigsPane(rig: "hover", pane: "eng6"),
+                       "Rigs with a pane opened from it")
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-unlocked", "-debug-screen", "progress"]), .progress)
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "pane:hover/eng6"]), .pane(rig: "hover", pane: "eng6"))
     }
@@ -25,6 +27,9 @@ final class DebugLaunchTests: XCTestCase {
         XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "pane:hover"]))
         XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "pane:/eng6"]))
         XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "pane:hover/"]))
+        XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "rigs:"]))
+        XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "rigs:hover"]))
+        XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "rigs:/eng6"]))
     }
 
     /// Only the first ask is answered: the launch opens, every later return asks Face ID.

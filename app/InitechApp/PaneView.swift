@@ -7,6 +7,8 @@ import SwiftUI
 struct PaneView: View {
     @StateObject var model: PaneModel
     @ObservedObject var home: HomeModel
+    /// back names the screen the way back returns to: the bar's screen he opened the pane from.
+    var back = "pinned"
     @State private var draft = ""
     @State private var follow = FollowState()
     @State private var loadingOlder = false
@@ -169,7 +171,7 @@ struct PaneView: View {
 
 extension PaneView {
     /// header is the pane's prompt line. Stacked over the list (iPhone) it
-    /// starts with the way back, "‹ pinned"; beside the list (iPad) the list is
+    /// starts with the way back, "‹ pinned" or "‹ rigs"; beside the list (iPad) the list is
     /// already there. Under it, the pane's state and where it runs; at the right,
     /// its context.
     var header: some View {
@@ -178,7 +180,7 @@ extension PaneView {
                 HStack(spacing: 0) {
                     if sizeClass == .compact {
                         Button { home.selection = nil } label: {
-                            Text("‹ pinned").foregroundStyle(Theme.red)
+                            Text("‹ \(back)").foregroundStyle(Theme.red)
                                 .padding(.vertical, 8).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
