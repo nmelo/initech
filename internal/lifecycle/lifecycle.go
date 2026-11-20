@@ -123,7 +123,7 @@ func Parse(raw string) Lifecycle {
 
 // namedSideStates are side states by name, even in a status.custom with no
 // qa_passed to end the chain before them.
-var namedSideStates = map[string]bool{"blocked": true, "deferred": true, "waiting": true, "waiting_on_nelson": true, "ready_to_ship": true}
+var namedSideStates = map[string]bool{"blocked": true, "deferred": true, "waiting": true, "waiting_for_release": true, "waiting_on_nelson": true, "ready_to_ship": true}
 
 // Working is the chain past open and short of closed: the states in which a
 // bead is someone's work to move. An allowlist, so a status added later is

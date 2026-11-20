@@ -57,7 +57,7 @@ type panelAlarm struct {
 
 // panelTitle is the title row's right side.
 type panelTitle struct {
-	Alarms           []panelAlarm // on Nelson, blocked, stale 20m, prompts.
+	Alarms           []panelAlarm // on Nelson, blocked, stale <window>, prompts.
 	Awake, Suspended int
 	CutWorking       int // Working agents omitted from the box.
 	Idle             int // Awake agents with no work or bead to show.
@@ -72,8 +72,10 @@ func (a panelAgent) awake() bool {
 // atPrompt reports whether the agent waits on a person.
 func (a panelAgent) atPrompt() bool { return a.State == StateWaitingInput }
 
-// panelTitleOf counts what the title row shows.
-func panelTitleOf(beads []panelBead, agents []panelAgent, now time.Time) panelTitle {
+// panelTitleOf counts what the title row shows. A bead is stale when it is
+// in_progress and its LastMoved (its family's newest move) is window old or
+// more; only in_progress is ever listed, so a side state never is.
+func panelTitleOf(beads []panelBead, agents []panelAgent, now time.Time, window time.Duration) panelTitle {
 	var nelson, blocked, stale, prompts []string
 	for _, b := range beads {
 		switch {
@@ -81,7 +83,7 @@ func panelTitleOf(beads []panelBead, agents []panelAgent, now time.Time) panelTi
 			nelson = append(nelson, b.ID)
 		case b.Status == "blocked":
 			blocked = append(blocked, b.ID)
-		case b.Status == "in_progress" && !b.LastMoved.IsZero() && now.Sub(b.LastMoved) >= rignumbers.NoMoveAfter:
+		case b.Status == "in_progress" && !b.LastMoved.IsZero() && now.Sub(b.LastMoved) >= window:
 			stale = append(stale, b.ID)
 		}
 	}
@@ -100,7 +102,7 @@ func panelTitleOf(beads []panelBead, agents []panelAgent, now time.Time) panelTi
 	t.Alarms = []panelAlarm{
 		{Label: "on Nelson", Names: nelson},
 		{Label: "blocked", Names: blocked},
-		{Label: "stale 20m", Names: stale},
+		{Label: "stale " + rignumbers.WindowText(window), Names: stale},
 		{Label: "prompts", Names: prompts},
 	}
 	return t
@@ -329,6 +331,7 @@ func (t *TUI) panelSnapshot(now time.Time) ([]panelAgent, []panelBead) {
 	heldMoved := map[string]time.Time{}
 	var beads []panelBead
 	if t.paceAnswered {
+		family := t.paceFamily(now)
 		for _, b := range t.paceBeads {
 			status[b.ID] = b.Status
 			titles[b.ID] = b.Title
@@ -342,7 +345,7 @@ func (t *TUI) panelSnapshot(now time.Time) ([]panelAgent, []panelBead) {
 					held[b.Assignee], heldMoved[b.Assignee] = b, moved
 				}
 			}
-			beads = append(beads, panelBead{ID: b.ID, Status: b.Status, LastMoved: t.paceBead(b, now).LastMoved()})
+			beads = append(beads, panelBead{ID: b.ID, Status: b.Status, LastMoved: family[b.ID]})
 		}
 	}
 	var agents []panelAgent
@@ -455,7 +458,7 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	// rule reads.
 	t.overlayBounds.prev, t.overlayBounds.dots = t.overlayBounds.dots, map[[2]int]overlayDot{}
 	t.overlayBounds.effortTop, t.overlayBounds.effortEnd = -1, -1
-	title := panelTitleOf(beads, agents, now)
+	title := panelTitleOf(beads, agents, now, t.staleWindow())
 	working, holding, idle := t.panelSections(agents, now)
 	rows := top - 3 // title, top border, bottom border
 	// With any agent hidden, the box's last row is the hidden line

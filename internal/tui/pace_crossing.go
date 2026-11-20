@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/nmelo/initech/internal/progress"
+	"github.com/nmelo/initech/internal/rignumbers"
 )
 
 // paceRead is what one crossing read found: the last move the poll knew when
@@ -95,6 +96,30 @@ func (t *TUI) paceClone() string {
 func (t *TUI) paceBead(b bdBead, now time.Time) progress.Bead {
 	return progress.Bead{ID: b.ID, Title: b.Title, Status: b.Status, Assignee: b.Assignee, UpdatedAt: b.UpdatedAt, ClosedAt: b.ClosedAt,
 		Moved: t.paceMoved(b.ID, now), Wait: t.paceWaits[b.ID], OwnerIdle: t.paceIdleFor[b.Assignee]}
+}
+
+// paceFamily is each polled bead's last move as a parent counts it: the
+// newest of its own and every descendant's (progress.FamilyMoved), the one
+// definition the panel, the rig numbers and the pace headers read.
+func (t *TUI) paceFamily(now time.Time) map[string]time.Time {
+	parents := make(map[string]string, len(t.paceBeads))
+	own := make(map[string]time.Time, len(t.paceBeads))
+	for _, b := range t.paceBeads {
+		parents[b.ID], own[b.ID] = b.Parent, t.paceBead(b, now).LastMoved()
+	}
+	return progress.FamilyMoved(parents, own)
+}
+
+// staleWindow is how long an in_progress bead sits before the panel and the
+// rig numbers call it stale: the rig's beads.stuck_after, else
+// rignumbers.NoMoveAfter.
+func (t *TUI) staleWindow() time.Duration {
+	if t.project != nil {
+		if d, ok := t.project.Beads.StuckAfter.Set(); ok {
+			return d
+		}
+	}
+	return rignumbers.NoMoveAfter
 }
 
 // panePaceStates maps each pane to its state by name.

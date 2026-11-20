@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/nmelo/initech/internal/progress"
 	"regexp"
 	"strings"
 	"time"
@@ -186,6 +187,7 @@ type BeadJSON struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	ClosedAt  time.Time `json:"closed_at"`
+	Parent    string    `json:"parent"`
 }
 
 // GatherBeads reads every bead with one bd list, for a caller that has no bead
@@ -203,7 +205,10 @@ func GatherBeads(ctx context.Context, run Runner, in *Input) error {
 	}
 	in.Beads = in.Beads[:0]
 	for _, b := range raw {
-		in.Beads = append(in.Beads, Bead{ID: b.ID, Status: b.Status, Assignee: b.Assignee, CreatedAt: b.CreatedAt, ClosedAt: b.ClosedAt, LastMoved: b.UpdatedAt})
+		// The last move as the TUI's poll reads it (progress.Bead.LastMoved),
+		// with nothing beyond updated_at known to a single read.
+		moved := progress.Bead{UpdatedAt: b.UpdatedAt}.LastMoved()
+		in.Beads = append(in.Beads, Bead{ID: b.ID, Status: b.Status, Assignee: b.Assignee, CreatedAt: b.CreatedAt, ClosedAt: b.ClosedAt, LastMoved: moved, Parent: b.Parent})
 	}
 	in.BeadsKnown = true
 	return nil

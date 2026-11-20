@@ -42,6 +42,9 @@ type bdBead struct {
 	ClosedAt  time.Time `json:"closed_at"`
 	// CreatedAt is when the bead was filed; the rig numbers count the hour's.
 	CreatedAt time.Time `json:"created_at"`
+	// Parent is the bead's parent; a parent's last move is its family's
+	// newest (paceFamily).
+	Parent string `json:"parent"`
 	// CommentCount is bd's comment count. A comment does not move updated_at,
 	// so the pace reads a rise in this count as the bead's last move.
 	CommentCount int `json:"comment_count"`

@@ -35,6 +35,9 @@ type Bead struct {
 	// reads the newer of the two. Never read from bd's JSON: initech progress
 	// sets it from LastMove, the TUI from its bead poll.
 	Moved time.Time `json:"-"`
+	// Parent is the bead's parent as bd's list gives it; "" when it has none.
+	// A parent's last move is its family's newest (FamilyMoved).
+	Parent string `json:"parent,omitempty"`
 
 	// Dependencies and Metadata are bd's, read for the wait (waits.go). Wait
 	// is that wait as judged by the caller (JudgeAll); zero when not judged.
@@ -457,6 +460,15 @@ func Build(in Input) Report {
 			beads = append(beads, b)
 		}
 	}
+	// Each bead's own last move, over the comments and commits this report
+	// read, and its family's newest: a parent whose children move is moving.
+	parents := make(map[string]string, len(in.Beads))
+	own := make(map[string]time.Time, len(in.Beads))
+	for _, b := range in.Beads {
+		parents[b.ID] = b.Parent
+		own[b.ID], _ = LastMove(b, in.Comments[b.ID], in.Commits)
+	}
+	family := FamilyMoved(parents, own)
 
 	var active []Bead
 	for _, b := range beads {
@@ -481,7 +493,7 @@ func Build(in Input) Report {
 		}
 		row.LastMove, row.By = LastMove(b, cs, in.Commits)
 		r.Beads = append(r.Beads, row)
-		if in.Rule.Chain[b.Status] && !row.LastMove.IsZero() && in.Now.Sub(row.LastMove) >= in.Rule.After {
+		if in.Rule.Chain[b.Status] && !neverStuck[b.Status] && !family[b.ID].IsZero() && in.Now.Sub(family[b.ID]) >= in.Rule.After {
 			r.Quiet = append(r.Quiet, QuietRow{ID: b.ID, Owner: row.Owner, Wait: Wait(b, cs, in)})
 		}
 	}
@@ -508,7 +520,7 @@ func Build(in Input) Report {
 		status[b.ID] = b.Status
 	}
 	for i, b := range beads {
-		beads[i].Moved, _ = LastMove(b, in.Comments[b.ID], in.Commits)
+		beads[i].Moved = family[b.ID]
 		// A wait the caller did not judge is judged here as far as the list
 		// and the clock can: a bead or a date. A tag or a run needs a caller
 		// that can ask git or gh (JudgeAll with an External).
@@ -762,7 +774,7 @@ var stuckStates = map[string]bool{"idle": true, "waiting": true, "pending": true
 // the pane state by name; "" when the owner has no pane here) idle, waiting or
 // pending.
 func Stuck(b Bead, ownerState string, rule Rule, now time.Time) bool {
-	if !rule.Chain[b.Status] {
+	if !rule.Chain[b.Status] || neverStuck[b.Status] {
 		return false
 	}
 	return now.Sub(b.LastMoved()) >= rule.After && stuckStates[ownerState]
@@ -879,4 +891,31 @@ func (p Pace) Line() string {
 		s += fmt.Sprintf(" · %d idle", p.Idle)
 	}
 	return s
+}
+
+// neverStuck are the states a bead sits in on purpose: never stuck or quiet,
+// whatever a rig's status.custom puts in its chain.
+var neverStuck = map[string]bool{"waiting": true, "waiting_for_release": true, "deferred": true}
+
+// FamilyMoved is each bead's last move as a parent counts it: the newest of
+// its own move (moved) and every descendant's, at any depth, by the parent
+// links (parent: a bead's id to its parent's). A bead with no children keeps
+// its own. Every surface that calls a bead stale or stuck reads this, so a
+// parent whose children move is never one. A cycle bd should never hold is
+// walked once.
+func FamilyMoved(parent map[string]string, moved map[string]time.Time) map[string]time.Time {
+	out := make(map[string]time.Time, len(moved))
+	for id, t := range moved {
+		if t.After(out[id]) {
+			out[id] = t
+		}
+		seen := map[string]bool{id: true}
+		for p := parent[id]; p != "" && !seen[p]; p = parent[p] {
+			seen[p] = true
+			if t.After(out[p]) {
+				out[p] = t
+			}
+		}
+	}
+	return out
 }

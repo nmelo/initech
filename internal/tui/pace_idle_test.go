@@ -142,11 +142,11 @@ func TestIdleOwner_StuckAndIdleReadsUnderBoth(t *testing.T) {
 		t.Errorf("effort row %q", tui.paceRows[0])
 	}
 	// The rig panel (ini-cdgj): the row reads idle 1h30m with its bead, and
-	// the title row names the bead as stale.
+	// the title row names the bead as stale, by this rig's stuck_after (15m).
 	if row := panelRowOf(t, tui, s, "eng1"); !strings.Contains(row, "1h30m") || !strings.Contains(row, "▶ ini-i.3") {
 		t.Errorf("the panel row %q lacks 1h30m and ▶ ini-i.3", row)
 	}
-	if got := simScreenText(s); !strings.Contains(got, "stale 20m 1 ini-i.3") {
+	if got := simScreenText(s); !strings.Contains(got, "stale 15m 1 ini-i.3") {
 		t.Errorf("the title row does not name ini-i.3 stale:\n%s", got)
 	}
 	rec.waitFor(1)

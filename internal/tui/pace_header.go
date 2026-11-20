@@ -105,8 +105,10 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 		t.paceIdleFor[name] = now.Sub(at)
 	}
 	beads := make([]progress.Bead, len(t.paceBeads))
+	family := t.paceFamily(now)
 	for i, b := range t.paceBeads {
 		beads[i] = t.paceBead(b, now)
+		beads[i].Moved = family[b.ID] // a parent whose children move is moving
 	}
 	panes := t.panePaceStates()
 	rule := t.paceRule()

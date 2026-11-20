@@ -66,14 +66,14 @@ func rigSlug(p *config.Project) string {
 // rigInput is what the main loop knows now: the beads of the last answered
 // poll (no bd call of its own) and the panes' states.
 func (t *TUI) rigInput(now time.Time) rignumbers.Input {
-	in := rignumbers.Input{Now: now, Panes: t.panePaceStates()}
+	in := rignumbers.Input{Now: now, Panes: t.panePaceStates(), StaleAfter: t.staleWindow()}
 	if t.paceAnswered {
 		in.BeadsKnown = true
 		for _, b := range t.paceBeads {
 			in.Beads = append(in.Beads, rignumbers.Bead{
 				ID: b.ID, Status: b.Status, Assignee: b.Assignee,
 				CreatedAt: b.CreatedAt, ClosedAt: b.ClosedAt,
-				LastMoved: t.paceBead(b, now).LastMoved(),
+				LastMoved: t.paceBead(b, now).LastMoved(), Parent: b.Parent,
 			})
 		}
 	}

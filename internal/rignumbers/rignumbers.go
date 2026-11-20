@@ -19,13 +19,15 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/nmelo/initech/internal/progress"
 )
 
 // Window is the period every per-hour number counts over.
 const Window = time.Hour
 
 // NoMoveAfter is how long an in_progress bead sits before it counts as not
-// moving.
+// moving, when the rig sets no beads.stuck_after (Input.StaleAfter).
 const NoMoveAfter = 20 * time.Minute
 
 // Commit is one commit on the product's main.
@@ -51,6 +53,9 @@ type Bead struct {
 	CreatedAt time.Time
 	ClosedAt  time.Time
 	LastMoved time.Time
+	// Parent is the bead's parent from bd's list; "" when it has none. A
+	// parent's last move is its family's newest (progress.FamilyMoved).
+	Parent string
 }
 
 // Input is everything one computation reads. A false Known flag means that
@@ -65,21 +70,28 @@ type Input struct {
 	Beads        []Bead
 	BeadsKnown   bool
 	Panes        map[string]string // pane name to its state ("idle", "running", ...); nil when unknown
+	// StaleAfter is how long an in_progress bead sits before it counts as
+	// not moving: the rig's beads.stuck_after; NoMoveAfter when zero.
+	StaleAfter time.Duration
 }
 
 // Numbers is one computation. A nil field is unknown.
 type Numbers struct {
-	At                time.Time `json:"at"`
-	Repo              bool      `json:"repo"`
-	MergesPerHour     *int      `json:"merges_per_hour"`
-	GateGreen         *int      `json:"gate_green"`
-	GateRed           *int      `json:"gate_red"`
-	GateMedianMinutes *float64  `json:"gate_median_minutes"`
-	LandingDepth      *int      `json:"landing_depth"`
-	Filed             *int      `json:"filed"`
-	Closed            *int      `json:"closed"`
-	NoMove20m         *int      `json:"no_move_20m"`
-	IdleEngineers     *int      `json:"idle_engineers"`
+	At time.Time `json:"at"`
+	// NoMoveWindow is the window NoMove20m counted by: the rig's
+	// beads.stuck_after, else NoMoveAfter. The line names it; the JSON key
+	// keeps its name, which thresholds use.
+	NoMoveWindow      time.Duration `json:"-"`
+	Repo              bool          `json:"repo"`
+	MergesPerHour     *int          `json:"merges_per_hour"`
+	GateGreen         *int          `json:"gate_green"`
+	GateRed           *int          `json:"gate_red"`
+	GateMedianMinutes *float64      `json:"gate_median_minutes"`
+	LandingDepth      *int          `json:"landing_depth"`
+	Filed             *int          `json:"filed"`
+	Closed            *int          `json:"closed"`
+	NoMove20m         *int          `json:"no_move_20m"`
+	IdleEngineers     *int          `json:"idle_engineers"`
 	// Today's push runs on main since local midnight (ini-9z0b): passes,
 	// fails, whether the latest finished one failed, and their median
 	// minutes; nil while the runs are unread.
@@ -123,7 +135,10 @@ var engineer = regexp.MustCompile(`^eng[0-9]+$`)
 // Compute returns the numbers for in.
 func Compute(in Input) Numbers {
 	since := in.Now.Add(-Window)
-	n := Numbers{At: in.Now, Repo: in.HasRepo}
+	n := Numbers{At: in.Now, Repo: in.HasRepo, NoMoveWindow: in.StaleAfter}
+	if n.NoMoveWindow <= 0 {
+		n.NoMoveWindow = NoMoveAfter
+	}
 	if in.HasRepo && in.CommitsKnown {
 		c := 0
 		for _, m := range in.Commits {
@@ -196,6 +211,12 @@ func Compute(in Input) Numbers {
 	}
 	if in.BeadsKnown {
 		filed, closed, still := 0, 0, 0
+		parents := make(map[string]string, len(in.Beads))
+		own := make(map[string]time.Time, len(in.Beads))
+		for _, b := range in.Beads {
+			parents[b.ID], own[b.ID] = b.Parent, b.LastMoved
+		}
+		family := progress.FamilyMoved(parents, own)
 		for _, b := range in.Beads {
 			if !b.CreatedAt.IsZero() && !b.CreatedAt.Before(since) {
 				filed++
@@ -203,7 +224,7 @@ func Compute(in Input) Numbers {
 			if !b.ClosedAt.IsZero() && !b.ClosedAt.Before(since) {
 				closed++
 			}
-			if b.Status == "in_progress" && in.Now.Sub(b.LastMoved) >= NoMoveAfter {
+			if b.Status == "in_progress" && in.Now.Sub(family[b.ID]) >= n.NoMoveWindow {
 				still++
 			}
 		}
@@ -269,9 +290,9 @@ func (n Numbers) Line() string {
 	if n.Filed != nil && n.Closed != nil {
 		filed = fmt.Sprintf("+%d/-%d", *n.Filed, *n.Closed)
 	}
-	return fmt.Sprintf("merges/h %s · gate %s · landing %s · filed %s · no move 20m %s · idle %s",
+	return fmt.Sprintf("merges/h %s · gate %s · landing %s · filed %s · no move %s %s · idle %s",
 		num(n.MergesPerHour, true, n.Repo), gate, num(n.LandingDepth, true, n.Repo), filed,
-		num(n.NoMove20m, false, n.Repo), num(n.IdleEngineers, false, n.Repo))
+		WindowText(n.NoMoveWindow), num(n.NoMove20m, false, n.Repo), num(n.IdleEngineers, false, n.Repo))
 }
 
 // names are the numbers a threshold can name, with the words its message uses.
@@ -443,4 +464,13 @@ func (n Numbers) BarLeft() (string, []Span) {
 	write(" · ", false)
 	write("closed today "+num(n.ClosedToday, false, n.Repo), false)
 	return b.String(), spans
+}
+
+// WindowText is a stale window as the panel and the line print it: "20m",
+// "2h", "1h30m"; NoMoveAfter's when zero.
+func WindowText(d time.Duration) string {
+	if d <= 0 {
+		d = NoMoveAfter
+	}
+	return progress.Rule{After: d}.AfterText()
 }

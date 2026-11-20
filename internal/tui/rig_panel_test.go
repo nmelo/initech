@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/nmelo/initech/internal/rignumbers"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ func TestPanelTitle_CountsEachAlarmWithItsIDs(t *testing.T) {
 		{Name: "qa3", Alive: true, Suspended: true, State: StateSuspended},
 		{Name: "eng9", Alive: false, State: StateDead},
 	}
-	title := panelTitleOf(beads, agents, panelNow)
+	title := panelTitleOf(beads, agents, panelNow, rignumbers.NoMoveAfter)
 	got := map[string]string{}
 	for _, a := range title.Alarms {
 		got[a.Label] = strings.Join(a.Names, ",")
@@ -67,7 +68,7 @@ func spanAt(spans []panelSpan, at int) string {
 // TestPanelTitle_AZeroIsDimAndTheFoldDropsIDs: nothing to say is said quietly,
 // and a narrow screen keeps the counts.
 func TestPanelTitle_AZeroIsDimAndTheFoldDropsIDs(t *testing.T) {
-	title := panelTitleOf([]panelBead{{ID: "ini-b1", Status: "blocked"}}, nil, panelNow)
+	title := panelTitleOf([]panelBead{{ID: "ini-b1", Status: "blocked"}}, nil, panelNow, rignumbers.NoMoveAfter)
 	line, spans := panelTitleText(title, 0)
 	if k := spanAt(spans, 0); k != "dim" {
 		t.Errorf("on Nelson 0 is %q, want dim", k)

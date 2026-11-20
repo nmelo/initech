@@ -62,6 +62,9 @@ func statusRigNumbers(st *statusRead, p *config.Project, now time.Time) rigNumbe
 	}
 	run := statusRigRun(dir)
 	in := rignumbers.Input{Now: now, Panes: map[string]string{}}
+	if p != nil {
+		in.StaleAfter, _ = p.Beads.StuckAfter.Set() // zero when unset: NoMoveAfter
+	}
 	for _, pi := range st.panes {
 		if s := agentState(pi); s != nil {
 			in.Panes[pi.Name] = *s

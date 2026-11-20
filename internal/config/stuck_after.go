@@ -82,6 +82,9 @@ func (s IdleAfter) MarshalYAML() (any, error) { return s.marshal() }
 // IsZero reports the key as absent, so a config without it never gains it.
 func (s IdleAfter) IsZero() bool { return s.d == 0 }
 
+// Set is the yaml value of beads.stuck_after and whether the rig set one.
+func (s StuckAfter) Set() (time.Duration, bool) { return s.d, s.d > 0 }
+
 // Value is how long a bead may sit before it reads stuck: the yaml value, or
 // DefaultStuckAfter when the key is absent.
 func (b BeadsConfig) Value() time.Duration {
