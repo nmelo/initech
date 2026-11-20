@@ -21,27 +21,28 @@ final class ScreenTailTests: XCTestCase {
         XCTAssertEqual(ScreenTail.tidy(["", "   ", "\t"]), [])
     }
 
-    // MARK: the unsent text in the input box (shapes seen in the running rigs, 2026-11-19)
+    // MARK: the unsent text in the input box. The shapes are the ones running panes showed; the
+    // words are made up: a fixture in this repo carries no rig's, agent's or account's own text.
 
     private let rule = String(repeating: "─", count: 80)
-    private let footer = ["  ⎇ main │ Fable 5.2 high │ Olivia │ 64% │ 71% ▓▓▓▓▓▓▓┃░░", "  ⏵⏵ bypass permissions on (shift+tab to cycle)"]
+    private let footer = ["  ⎇ main │ Fable 5.2 high │ Account │ 64% │ 71% ▓▓▓▓▓▓▓┃░░", "  ⏵⏵ bypass permissions on (shift+tab to cycle)"]
 
-    /// theguy's pane: one line typed and not sent, under the end of a reply and above Claude Code's footer.
+    /// One line typed and not sent, under the end of a reply and above Claude Code's footer; the box's top rule carries the pane's title.
     func testUnsent_OneLine_IsThatLineAlone() {
-        let screen = ["  Tell me when you're done, and I'll have her clear the samples.", "", "✻ Cooked for 2s · done 9:46 PM",
+        let screen = ["  The last line of a reply, as the pane drew it.", "", "✻ Cooked for 2s · done 9:46 PM",
                       String(repeating: " ", count: 60) + "✔ Update installed · /restart to apply",
-                      String(repeating: "─", count: 68) + " The guy ─", "❯ aaaa", rule] + footer
+                      String(repeating: "─", count: 68) + " A title ─", "❯ aaaa", rule] + footer
         XCTAssertEqual(ScreenTail.unsent(screen), ["aaaa"])
     }
 
-    /// arch in nayutal: a long unsent message, its top scrolled out of the box.
+    /// A long unsent message, its top scrolled out of the box.
     func testUnsent_MoreLinesAbove_SaysSo() {
         let screen = ["✻ Worked for 2s · done 9:37 PM", "", "─── ↑ 11 more " + String(repeating: "─", count: 40),
-                      "  status, which the app words. Recommend…", rule] + footer
-        XCTAssertEqual(ScreenTail.unsent(screen), ["↑ 11 more", "status, which the app words. Recommend…"])
+                      "  the last line of a long draft…", rule] + footer
+        XCTAssertEqual(ScreenTail.unsent(screen), ["↑ 11 more", "the last line of a long draft…"])
     }
 
-    /// Claude Code puts a no-break space after its prompt mark (seen on theguy's pane: the text came out one space in).
+    /// Claude Code puts a no-break space after its prompt mark (seen on a device: the text came out one space in).
     func testUnsent_ANoBreakSpaceAfterTheMark_IsNotKept() {
         XCTAssertEqual(ScreenTail.unsent([rule, "❯\u{00A0}aaaa", rule] + footer), ["aaaa"])
         XCTAssertEqual(ScreenTail.unsent([rule, "❯\u{00A0}first", "  second", rule]), ["first", "second"])
