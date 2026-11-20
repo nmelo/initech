@@ -213,6 +213,7 @@ first.
   back. On iPhone a swipe in from the left edge goes back too (`BackSwipe.swift` keeps the system's swipe
   working with the bar hidden). A run of tool calls is one line (`InitechCore/.../ToolSummary.swift`). While the pane sits at something (a dialog,
   a banner, unsent text) its last screen lines show in a block named "on its screen now"
-  (`InitechCore/.../ScreenTail.swift` tidies them). Above the input line, which ends the
+  (`InitechCore/.../ScreenTail.swift` tidies them); for unsent text the block shows that text alone, cut from
+  those lines, and is named "unsent in its input box". Above the input line, which ends the
   screen, sits the pane's list strip when its agent set one (`strip` in the status answer): what waits on you, one
   line per item.

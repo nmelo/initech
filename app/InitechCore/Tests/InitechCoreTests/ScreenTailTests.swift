@@ -20,4 +20,46 @@ final class ScreenTailTests: XCTestCase {
         XCTAssertEqual(ScreenTail.tidy([]), [])
         XCTAssertEqual(ScreenTail.tidy(["", "   ", "\t"]), [])
     }
+
+    // MARK: the unsent text in the input box (shapes seen in the running rigs, 2026-11-19)
+
+    private let rule = String(repeating: "─", count: 80)
+    private let footer = ["  ⎇ main │ Fable 5.2 high │ Olivia │ 64% │ 71% ▓▓▓▓▓▓▓┃░░", "  ⏵⏵ bypass permissions on (shift+tab to cycle)"]
+
+    /// theguy's pane: one line typed and not sent, under the end of a reply and above Claude Code's footer.
+    func testUnsent_OneLine_IsThatLineAlone() {
+        let screen = ["  Tell me when you're done, and I'll have her clear the samples.", "", "✻ Cooked for 2s · done 9:46 PM",
+                      String(repeating: " ", count: 60) + "✔ Update installed · /restart to apply",
+                      String(repeating: "─", count: 68) + " The guy ─", "❯ aaaa", rule] + footer
+        XCTAssertEqual(ScreenTail.unsent(screen), ["aaaa"])
+    }
+
+    /// arch in nayutal: a long unsent message, its top scrolled out of the box.
+    func testUnsent_MoreLinesAbove_SaysSo() {
+        let screen = ["✻ Worked for 2s · done 9:37 PM", "", "─── ↑ 11 more " + String(repeating: "─", count: 40),
+                      "  status, which the app words. Recommend…", rule] + footer
+        XCTAssertEqual(ScreenTail.unsent(screen), ["↑ 11 more", "status, which the app words. Recommend…"])
+    }
+
+    /// Claude Code puts a no-break space after its prompt mark (seen on theguy's pane: the text came out one space in).
+    func testUnsent_ANoBreakSpaceAfterTheMark_IsNotKept() {
+        XCTAssertEqual(ScreenTail.unsent([rule, "❯\u{00A0}aaaa", rule] + footer), ["aaaa"])
+        XCTAssertEqual(ScreenTail.unsent([rule, "❯\u{00A0}first", "  second", rule]), ["first", "second"])
+    }
+
+    func testUnsent_SeveralLines_KeepTheirShape() {
+        let screen = [rule, "❯ first line", "  second line", "    indented third", rule] + footer
+        XCTAssertEqual(ScreenTail.unsent(screen), ["first line", "second line", "  indented third"])
+    }
+
+    /// Feed it nothing it can be sure of, and it cuts nothing: the caller shows the screen as it is.
+    func testUnsent_NoBoxFound_IsNil() {
+        XCTAssertNil(ScreenTail.unsent([]))
+        XCTAssertNil(ScreenTail.unsent(["Do you want to create hello.txt?", "❯ 1. Yes", "  2. No"]), "a dialog has no input box")
+        XCTAssertNil(ScreenTail.unsent(["a reply", rule, "❯ aaaa"]), "one rule is not a box")
+        XCTAssertNil(ScreenTail.unsent([rule, "❯ ", rule] + footer), "an empty box has no unsent text")
+        XCTAssertNil(ScreenTail.unsent([rule, "", rule]), "an empty box has no unsent text")
+        XCTAssertNil(ScreenTail.unsent([rule, "some text with no prompt mark", rule]), "between two rules, but not the input box")
+        XCTAssertNil(ScreenTail.unsent(["a - b - c - d - e - f - g", "❯ x", "------------------------------"]), "hyphens are not the box's rule")
+    }
 }

@@ -168,7 +168,13 @@ struct PaneView: View {
                     .padding(.horizontal, 16).padding(.vertical, 6)
             }
             if let screen = screenTail, !screen.isEmpty {
-                ScreenLines(lines: screen, sample: sampleScreen)
+                // A pane with text left unsent shows that text alone, cut from its screen;
+                // when the cut is not certain, and at a dialog or banner, the screen as it is.
+                if row?.state == "pending", let unsent = ScreenTail.unsent(screen) {
+                    ScreenLines(title: "unsent in its input box", lines: unsent, sample: sampleScreen)
+                } else {
+                    ScreenLines(title: "on its screen now", lines: screen, sample: sampleScreen)
+                }
             }
             if !strip.isEmpty { StripView(items: strip, sample: sampleStrip) }
             InputBar(draft: $draft) { text in Task { await model.send(text) } }
@@ -439,6 +445,8 @@ struct StripView: View {
 /// itself, with the lines as the terminal drew them. A long line scrolls
 /// sideways and is never wrapped, so a dialog keeps its shape.
 struct ScreenLines: View {
+    /// title names what the lines are: "on its screen now", or "unsent in its input box".
+    let title: String
     let lines: [String]
     /// sample marks the lines as made-up text from the debug option.
     var sample = false
@@ -447,7 +455,8 @@ struct ScreenLines: View {
         let tidy = ScreenTail.tidy(lines)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text("on its screen now").font(Theme.mono(.caption2, .bold)).foregroundStyle(Theme.orange)
+                Text(title).font(Theme.mono(.caption2, .bold)).foregroundStyle(Theme.orange)
+                    .fixedSize()
                 if sample { Text("SAMPLE TEXT").font(Theme.mono(.caption2, .bold)).foregroundStyle(Theme.red) }
                 Rectangle().fill(Theme.line).frame(height: 1)
             }
@@ -470,7 +479,7 @@ struct ScreenLines: View {
         .overlay(alignment: .leading) { Rectangle().fill(Theme.orange).frame(width: 3) }
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("On its screen now: \(tidy.joined(separator: ", "))")
+        .accessibilityLabel("\(title): \(tidy.joined(separator: ", "))")
         .accessibilityIdentifier("pane-screen")
     }
 }
