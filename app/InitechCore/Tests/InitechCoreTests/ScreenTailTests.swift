@@ -48,6 +48,29 @@ final class ScreenTailTests: XCTestCase {
         XCTAssertEqual(ScreenTail.unsent([rule, "❯\u{00A0}first", "  second", rule]), ["first", "second"])
     }
 
+    /// The box is between the LAST two rules. A reply can draw a rule of its own above (a divider, a
+    /// table's edge), and text under it can start with the prompt mark (a quoted prompt): that is not the box.
+    func testUnsent_ARuleAboveTheBox_IsNotTheBox() {
+        let screen = ["a reply that draws a divider:", rule, "❯ a prompt quoted in the reply", "more of the reply", rule, "❯ aaaa", rule] + footer
+        XCTAssertEqual(ScreenTail.unsent(screen), ["aaaa"])
+    }
+
+    /// A rule is a line that is almost all "─". A line of the draft that only starts with one is text.
+    func testUnsent_ADraftLineStartingWithADash_IsText_NotARule() {
+        let dashed = "─ a second line of the draft that begins with a box dash"
+        XCTAssertFalse(ScreenTail.isRule(dashed))
+        XCTAssertTrue(ScreenTail.isRule(rule))
+        XCTAssertTrue(ScreenTail.isRule(String(repeating: "─", count: 27) + " pa ─"), "a top rule carrying the pane's label is a rule")
+        // As the box draws it: a line after the first sits under the text, two columns in.
+        XCTAssertEqual(ScreenTail.unsent([rule, "❯ first", "  " + dashed, rule] + footer), ["first", dashed])
+    }
+
+    /// A rule is long. A few dashes typed in a draft (a divider of his own) are text.
+    func testUnsent_AShortRunOfDashesInTheDraft_IsText_NotARule() {
+        XCTAssertFalse(ScreenTail.isRule("─────"))
+        XCTAssertEqual(ScreenTail.unsent([rule, "❯ first", "  ─────", "  last", rule] + footer), ["first", "─────", "last"])
+    }
+
     func testUnsent_SeveralLines_KeepTheirShape() {
         let screen = [rule, "❯ first line", "  second line", "    indented third", rule] + footer
         XCTAssertEqual(ScreenTail.unsent(screen), ["first line", "second line", "  indented third"])

@@ -227,6 +227,7 @@ longer than 15 bytes, or an optimised build would hide it from that check.
   working with the bar hidden). A run of tool calls is one line (`InitechCore/.../ToolSummary.swift`). While the pane sits at something (a dialog,
   a banner, unsent text) its last screen lines show in a block named "on its screen now"
   (`InitechCore/.../ScreenTail.swift` tidies them); for unsent text the block shows that text alone, cut from
-  those lines, and is named "unsent in its input box". Above the input line, which ends the
+  those lines, and is named "unsent in its input box". A draft taller than Claude Code's own box shows
+  only the lines that box shows (its end): the pane does not show the rest, so the app cannot. Above the input line, which ends the
   screen, sits the pane's list strip when its agent set one (`strip` in the status answer): what waits on you, one
   line per item.
