@@ -9,7 +9,7 @@ import (
 )
 
 // ini-gav: a send to an agent at its prompt was deferred "modal open" for an
-// hour. The capture (nayutal eng6, Claude Code with Opus, a ~32-column pane)
+// hour. The capture (eastrig eng6, Claude Code with Opus, a ~32-column pane)
 // showed the cause: the dialog guard found the input box only by a rule of 40
 // or more characters, so a pane under 40 columns never read "back at its
 // prompt" and the latch an answered permission prompt raised never cleared.
@@ -24,7 +24,7 @@ func gavScreen(t *testing.T, name string) []string {
 // The captured eng6 screen is at its prompt: the input box is found, no
 // dialog, at rest. Red at base: no frame below 40 columns.
 func TestGav_TheNarrowCapturedPaneIsAtItsPrompt(t *testing.T) {
-	rows := gavScreen(t, "nayutal_eng6_latched_w32.txt")
+	rows := gavScreen(t, "eastrig_eng6_latched_w32.txt")
 	if _, _, ok := lowestComposerFrame(rows); !ok {
 		t.Error("the 32-column input box is not found")
 	}
@@ -40,7 +40,7 @@ func TestGav_TheNarrowCapturedPaneIsAtItsPrompt(t *testing.T) {
 // since been answered clears once the narrow pane has sat at its prompt for
 // the idle window, and a send is no longer deferred.
 func TestGav_AnAnsweredPromptsLatchClearsOnANarrowPane(t *testing.T) {
-	rows := gavScreen(t, "nayutal_eng6_latched_w32.txt")
+	rows := gavScreen(t, "eastrig_eng6_latched_w32.txt")
 	p := newEmuPane("eng6", 32, len(rows))
 	lvxwPaint(p, rows[1:]) // the loader's blank first row is the pane's
 	tu := &TUI{panes: toPaneViews([]*Pane{p})}
@@ -59,7 +59,7 @@ func TestGav_AnAnsweredPromptsLatchClearsOnANarrowPane(t *testing.T) {
 
 // A labelled input box (a named session) is found and reads at rest.
 func TestGav_ALabelledInputBoxIsAtItsPrompt(t *testing.T) {
-	for _, name := range []string{"theguy_pa_w94.txt", "haiku310_label_pa_w94.txt", "haiku310_label_pa_w40.txt", "haiku310_label_accountant_w94.txt", "hover_super_label_w118.txt"} {
+	for _, name := range []string{"cosrig_pa_w94.txt", "haiku310_label_pa_w94.txt", "haiku310_label_pa_w40.txt", "haiku310_label_accountant_w94.txt", "north_super_label_w118.txt"} {
 		rows := gavScreen(t, name)
 		if !screenShowsIdleComposer(rows) {
 			t.Errorf("%s: a labelled input box does not read at rest", name)

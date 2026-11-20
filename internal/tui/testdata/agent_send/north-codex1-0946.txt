@@ -1,9 +1,9 @@
-› [from super] hov-v19xg is sensitive, so
+› [from super] nrt-v19xg is sensitive, so
   it leaves the line; eng4 has it. You
   are done; park.
 
 
-• Parked. eng4 owns hov-v19xg.
+• Parked. eng4 owns nrt-v19xg.
   └ Tip: Visit the Codex community forum.
 
   Worked for 10s • 9:13 AM
@@ -12,5 +12,5 @@
 › Ask Codex to do anything
 
   GPT-6.2-Astra xhigh · Context 60% left ·
-  ~/Desktop/Projects/hover/codex1 · main …
+  ~/Desktop/Projects/north/codex1 · main …
   ← for agents · ? for shortcuts

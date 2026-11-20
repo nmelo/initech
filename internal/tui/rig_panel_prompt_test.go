@@ -9,7 +9,7 @@ func TestAgentsBox_ClearedPromptStaysClearedWhileMonitorActivityFlips(t *testing
 	var st panelSettledState
 	st.settle("prompt", panelNow, panelNow)
 	resumed := panelNow.Add(9 * time.Second)
-	// Hover's monitor kept the pane flipping for eleven minutes. Only
+	// North's monitor kept the pane flipping for eleven minutes. Only
 	// the first change leaves a prompt; later flicker keeps the run's age.
 	for tick := 0; tick <= 22; tick++ {
 		since := resumed.Add(time.Duration(tick) * 30 * time.Second)
@@ -69,8 +69,8 @@ func TestAgentsBox_PermissionPromptAppearsAndClearsInBothModes(t *testing.T) {
 	for _, tc := range []struct {
 		footer, wantRest string
 	}{
-		{"hover_video_auto_monitor.txt", "background"},
-		{"nayutal_eng9_bypass_agent.txt", "idle"},
+		{"north_video_auto_monitor.txt", "background"},
+		{"eastrig_eng9_bypass_agent.txt", "idle"},
 	} {
 		t.Run(tc.footer, func(t *testing.T) {
 			rows, width := corpusFooter(t, tc.footer)
@@ -93,7 +93,7 @@ func TestAgentsBox_PermissionPromptAppearsAndClearsInBothModes(t *testing.T) {
 			p.observeBackground(panelNow, true, parseFooter(rows, width))
 			check(0, tc.wantRest, tc.wantRest)
 			// A permission dialog replaces the footer. Replay the captured
-			// question and the permission notification seen in hover's log.
+			// question and the permission notification seen in north's log.
 			lvxwPaint(p, rmgPrompt(t))
 			p.attn.noteNotify("Claude needs your permission")
 			check(time.Second, "prompt", "waiting")

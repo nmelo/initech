@@ -7,7 +7,7 @@ import (
 
 // ── ini-ap3i follow-on: launch cost must not scale with fleet size ────
 //
-// Measured on hover (39 agents, 2026-08-15): one launch booted 39 claude
+// Measured on north (39 agents, 2026-08-15): one launch booted 39 claude
 // processes in a 90ms burst — +17GB RSS, load 3→216, ninety seconds of a
 // machine that could not schedule its own TUI. Two features close it:
 // persisted suspension (an agent parked at shutdown cold-parks at launch,

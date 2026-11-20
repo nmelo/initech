@@ -56,7 +56,7 @@ func TestWaits75_TheFed0ShapeSendsNothing(t *testing.T) {
 	tui, _ := waitsTUI(t, r)
 	useWaitComments(t, map[string][]progress.Comment{"ini-fed0": {
 		{Text: "WAIT OVER: ◆ ini-nxyf landed", CreatedAt: c0.Add(4 * time.Minute)},
-		{Text: "WAIT (operator via theguy): shape is changing to a five-box rig board", CreatedAt: c0.Add(5 * time.Minute)},
+		{Text: "WAIT (operator via cosrig): shape is changing to a five-box rig board", CreatedAt: c0.Add(5 * time.Minute)},
 	}}, nil, nil)
 	tui.pollBeadsOnce(c0.Add(2 * time.Hour))
 	if sentFor(tui, "ini-fed0") || tui.paceWaits["ini-fed0"].Over {

@@ -266,7 +266,7 @@ func (fs *FleetState) IsHidden(key string) bool { return fs.hidden[key] }
 
 // IsSuspended reports whether the pane key was suspended when last recorded.
 // Read at launch: a suspended agent cold-parks (pane, no process) instead of
-// booting, so launch cost tracks ACTIVE agents, not fleet size (hover, 39
+// booting, so launch cost tracks ACTIVE agents, not fleet size (north, 39
 // agents: one launch drove load to 216 rebooting agents that were parked).
 func (fs *FleetState) IsSuspended(key string) bool { return fs.suspended[key] }
 

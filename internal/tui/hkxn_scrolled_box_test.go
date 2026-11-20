@@ -12,7 +12,7 @@ import (
 // a "─── ↑ N more ───" top rule, with no ❯ prompt; 2.1.325 put ❯ on the first
 // row it showed. The reader found no composer, so the belt withheld the
 // Enter of every long send to a narrow pane. Both fixtures are live captures:
-// a Haiku pane at 49 columns at the moment of a WITHHELD, and hover's growth
+// a Haiku pane at 49 columns at the moment of a WITHHELD, and north's growth
 // pane at 47 columns one second after one (its words replaced, its shape
 // kept; account names replaced by a placeholder of the same length).
 
@@ -23,7 +23,7 @@ type hkxnFixture struct {
 var hkxnFixtures = []hkxnFixture{
 	{"haiku326_scrolled_box_w49.txt", "read. Put the question and your", "Haiku 5.5"},
 	{"fable326_scrolled_box_w47.txt", "today (the reviewer reads the code first,", "Fable 5.2"},
-	// hover's super at 31x15 (reopen): a named session, so the scroll label
+	// north's super at 31x15 (reopen): a named session, so the scroll label
 	// and the session name share the top rule, with and without the
 	// "draft stashed" hint above it.
 	{"opus326_scrolled_named_w31.txt", "how did the key reach the", "Opus 5.5"},
@@ -105,8 +105,8 @@ func TestScrolledBox326_OnlyTheMeasuredRuleShape(t *testing.T) {
 		"─ ↑ 1 more ─":                   true,
 		"─── ↑ 10 more " + dash + " end": false,
 		// The named session's form (reopen): the name after the scroll label.
-		"─── ↑ 18 more ─── Hover super ─":                     true,
-		"─── ↑ 18 more ─── Hover super " + dash:               true,
+		"─── ↑ 18 more ─── North super ─":                     true,
+		"─── ↑ 18 more ─── North super " + dash:               true,
 		"─── ↑ 18 more ─── a ─── b ─":                         false,
 		"─── ↑ 18 more ─── name ─ trailing":                   false,
 		"─── ↑ 18 more ─── " + strings.Repeat("x", 41) + " ─": false,

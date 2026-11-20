@@ -10,7 +10,7 @@ import (
 // The modal guard (ini-7txh) defers a send rather than paste into an open
 // dialog, and the deferred message waits on the pane's queue. Two defects let
 // one message sit there forever while the log grew by a line every 500 ms
-// (nayutal eng3, 2026-10-14: 52,270 lines over seven hours, never reported):
+// (eastrig eng3, 2026-10-14: 52,270 lines over seven hours, never reported):
 //
 //   - drainModalQueue popped the message, the send found the dialog still up
 //     and put it back on the queue, and the drain's loop popped it again after

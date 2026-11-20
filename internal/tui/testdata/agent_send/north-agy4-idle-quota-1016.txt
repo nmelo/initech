@@ -1,5 +1,5 @@
 ○ Thought for 50.1s (I'm checking wh...)
-● Ran (cd /Users/nmelo/Desktop/Proje...)
+● Ran (cd /Users/owner/Desktop/Proje...)
 ● Explored 1 search (ctrl+o to expand)
 
 ⚠ Individual quota reached. Please

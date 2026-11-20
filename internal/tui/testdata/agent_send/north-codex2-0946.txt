@@ -14,5 +14,5 @@
 › Ask Codex to do anything
 
   GPT-6.2-Astra xhigh · Context 28%
-  left · ~/Desktop/Projects/hover/…
+  left · ~/Desktop/Projects/north/…
   ← for agents              ⚠ 1 · f2

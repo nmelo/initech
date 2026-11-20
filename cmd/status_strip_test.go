@@ -48,7 +48,7 @@ func stripAny(items []string) []any {
 
 // AC2: three items, in the agent's order.
 func TestStatusStrip_ThreeItemsInOrder(t *testing.T) {
-	items := []string{"Release hover?", "Put the drone on the bench", "CI runner: register it?"}
+	items := []string{"Release north?", "Put the drone on the bench", "CI runner: register it?"}
 	o := stripStatus(t, `[{"name":"eng1","activity":"idle","alive":true,"visible":true,"strip":`+stripJSONList(t, items)+`}]`)
 	if !reflect.DeepEqual(o["strip"], stripAny(items)) {
 		t.Errorf("strip = %#v, want %q in order", o["strip"], items)

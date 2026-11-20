@@ -20,7 +20,7 @@ import (
 )
 
 // initech progress: the effort table and lines, on the fixture in
-// testdata/progress, whose golden.txt is theguy's progress.py run on the same
+// testdata/progress, whose golden.txt is the chief of staff's progress.py run on the same
 // files (gen_golden.sh).
 
 // progressFixtureNow is the clock gen_golden.sh fixes.
@@ -728,7 +728,7 @@ func TestProgress_AStatedWaitDecides(t *testing.T) {
 		bead("fx-new", "closed", "[]"),
 	}, ",") + "]"
 	fake := &progressFake{list: list, comments: map[string]string{
-		"fx-w": `[{"author":"super","text":"WAIT (operator via theguy): a human answer","created_at":"` + waitAt + `"}]`,
+		"fx-w": `[{"author":"super","text":"WAIT (operator via cosrig): a human answer","created_at":"` + waitAt + `"}]`,
 		"fx-t": `[{"author":"super","text":"WAIT: fx-new lands","created_at":"` + waitAt + `"}]`,
 	}}
 	out, err := runProgressJSON(t, fake, progressRepos, "fx-")

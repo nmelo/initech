@@ -929,7 +929,7 @@ func hiddenStateRowStyle(t *testing.T, hidden bool, lastOutput time.Time) (tcell
 	return fg, attrs
 }
 
-// The operator's report (qa4 on hover): a hidden agent that is WORKING read
+// The operator's report (qa4 on north): a hidden agent that is WORKING read
 // grey in the panel while the overlay showed it green. Hidden must not mask
 // running.
 func TestAgentsModal_HiddenWorkingAgentIsGreenItalic(t *testing.T) {

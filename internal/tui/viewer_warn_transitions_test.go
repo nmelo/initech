@@ -4,7 +4,7 @@ package tui
 //
 // ini-uz42 narrowed the warning to the one state that is actually a defect
 // (owned, present, unhidden, unplanned) -- but that state still warned on
-// every render frame while it persisted, which is how the operator's hover
+// every render frame while it persisted, which is how the operator's north
 // logs accumulated 148,513 identical lines. A log line that repeats 30 times a
 // second is not a diagnostic; it is noise that buries the line before it.
 

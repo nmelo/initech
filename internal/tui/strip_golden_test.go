@@ -10,9 +10,9 @@ import (
 
 // The picture's items: a short one, one that wraps at the wide size, a third.
 var pictureItems = []string{
-	"Release hover? Recommended yes: it ships the recording fix and frees 48w5p's last steps.",
-	"Put the drone on the bench, then run the split-screen read on hov-tze7.1 with benchy (about 15 min, props off, battery charged).",
-	"CI runner for nayutal's lab: register it? Victor-san has write access to that repo.",
+	"Release north? Recommended yes: it ships the recording fix and frees 48w5p's last steps.",
+	"Put the drone on the bench, then run the split-screen read on nrt-tze7.1 with benchy (about 15 min, props off, battery charged).",
+	"Spare props for the bench drones: order them? The quote holds until Friday at noon.",
 }
 
 // stripScene renders the scene with items, after the pane took its rows.
@@ -76,7 +76,7 @@ func TestStrip_SitsDirectlyAboveTheBar_BelowTheAgent(t *testing.T) {
 	if got := stripRowText(s, 39); !strings.Contains(got, "super") {
 		t.Fatalf("bar moved: row 39 is %q", got)
 	}
-	for y, want := range map[int]string{34: " ▶ Release hover?", 35: " ▶ Put the drone", 36: "   ", 37: " ▶ CI runner"} {
+	for y, want := range map[int]string{34: " ▶ Release north?", 35: " ▶ Put the drone", 36: "   ", 37: " ▶ Spare props"} {
 		if got := stripRowText(s, y); !strings.HasPrefix(got, want) {
 			t.Errorf("row %d is %q, want it to start %q", y, got, want)
 		}

@@ -173,7 +173,7 @@ func TestCeiling_TheStepSumsTheOtherRigsAndWritesItsOwn(t *testing.T) {
 	fm.ps = "500 1 01:00 claude\n"
 	now := time.Date(2026, 11, 5, 2, 0, 0, 0, time.UTC)
 	for _, f := range []machine.FleetFile{
-		{Rig: "hover", PID: 2, Time: now.Add(-time.Minute), Awake: 7},
+		{Rig: "north", PID: 2, Time: now.Add(-time.Minute), Awake: 7},
 		{Rig: "old", PID: 3, Time: now.Add(-machine.StaleAfter), Awake: 40},
 	} {
 		if err := machine.WriteFleet(fm.dir, f); err != nil {
@@ -189,7 +189,7 @@ func TestCeiling_TheStepSumsTheOtherRigsAndWritesItsOwn(t *testing.T) {
 
 	r, _, engaged, _ := tui.ceiling.gate.Snapshot()
 	if !r.AwakeOK || r.Awake != 8 || engaged {
-		t.Fatalf("reading = %+v engaged=%v, want 8 awake (1 here + hover 7; old is stale), not engaged", r, engaged)
+		t.Fatalf("reading = %+v engaged=%v, want 8 awake (1 here + north 7; old is stale), not engaged", r, engaged)
 	}
 	fi, err := os.Stat(filepath.Join(fm.dir, machine.FleetDir, "initech.json"))
 	if err != nil {

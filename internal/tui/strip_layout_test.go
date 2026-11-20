@@ -25,17 +25,17 @@ func (sp stripLayout) render() []string {
 // second wrapping under its own text (points 3 and 6).
 func TestStripPlan_ItemsInOrderEachWithTheMark_ALongOneWrapsUnderItsText(t *testing.T) {
 	items := []string{
-		"Release hover? Recommended yes.",
+		"Release north? Recommended yes.",
 		"Put the drone on the bench, then run the split-screen read with benchy (about 15 min, props off, battery charged).",
-		"CI runner for nayutal's lab: register it?",
+		"CI runner for eastrig's lab: register it?",
 	}
 	sp := stripPlan(items, 40, 61) // 58 columns of text: the second item's first row is exactly 58
 	want := []string{
 		"   ",
-		" ▶ Release hover? Recommended yes.",
+		" ▶ Release north? Recommended yes.",
 		" ▶ Put the drone on the bench, then run the split-screen read",
 		"   with benchy (about 15 min, props off, battery charged).",
-		" ▶ CI runner for nayutal's lab: register it?",
+		" ▶ CI runner for eastrig's lab: register it?",
 		"   ",
 	}
 	if got := sp.render(); strings.Join(got, "\n") != strings.Join(want, "\n") {

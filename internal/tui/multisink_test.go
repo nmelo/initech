@@ -171,7 +171,7 @@ func TestMultiSink_KeepsWriterAfterTransientTimeout(t *testing.T) {
 				t.Fatalf("writer dropped after a TRANSIENT timeout — window 2's pane stops " +
 					"updating for the life of the attach while window 1 shows it running")
 			}
-			// CONTRACT CHANGE with the all-or-drop fix (hover garble): the
+			// CONTRACT CHANGE with the all-or-drop fix (north garble): the
 			// hitched chunk is now RETRIED and delivered, not dropped — the
 			// original assertion encoded lossy-keep, which is the byte gap
 			// that tore escape sequences. All three chunks must arrive.
@@ -193,7 +193,7 @@ func TestMultiSink_StillDropsFinishedWriter(t *testing.T) {
 	}
 }
 
-// ── hover window-2 GARBLE (operator, 2026-08-22) — the freeze fix's own gap ──
+// ── north window-2 GARBLE (operator, 2026-08-22) — the freeze fix's own gap ──
 //
 // yamux Stream.Write sends in segments and returns (total, err) — a transient
 // timeout can fire AFTER part of the chunk is on the wire. v2.11.2's fix kept

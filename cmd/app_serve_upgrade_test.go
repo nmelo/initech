@@ -86,7 +86,7 @@ func newUpgradeRig(t *testing.T) *upgradeRig {
 	appServeStateDir = func() string { return r.state }
 	appServeListen = appserve.ListenLocalNetwork
 	appServeAddrs = func() ([]appserve.IfaceAddr, error) {
-		return []appserve.IfaceAddr{{Iface: "en0", IP: net.ParseIP("192.168.1.50"), Up: true}}, nil
+		return []appserve.IfaceAddr{{Iface: "en0", IP: net.ParseIP("10.0.0.50"), Up: true}}, nil
 	}
 	appServeListenOn = func(net.IP, int) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") }
 	appServeProjects = []string{projects}

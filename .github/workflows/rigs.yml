@@ -11,9 +11,9 @@ name: Rigs
 # nightly holds the next cut until super has read it. This takes the rigs off
 # the landing-to-release path.
 #
-# ON THE WORKBENCH (ini-c5a.7, the operator via theguy): the race job and the
+# ON THE WORKBENCH (ini-c5a.7, the operator via the chief of staff): the race job and the
 # four rig shards run on the two runners labelled initech-rigs on
-# 192.168.1.100 (user initech-ci, sandboxed), never on main CI's eight; the
+# 192.0.2.100 (user initech-ci, sandboxed), never on main CI's eight; the
 # rigs build their own binaries under t.TempDir and start no Claude. The
 # runners share one Go build cache, so setup-go's cache is on for pull
 # requests only. What cannot run there (macOS-only, or needing a LAN address
@@ -42,7 +42,7 @@ on:
 permissions:
   contents: read
 
-# ON ITS OWN RUNNERS, AT LOW PRIORITY (ini-c5a.7, theguy's conditions): the
+# ON ITS OWN RUNNERS, AT LOW PRIORITY (ini-c5a.7, the chief of staff's conditions): the
 # five workbench jobs run on the two runners labelled initech-rigs, never on
 # main's eight (initech-wb), so a rigs run never takes a runner a main push
 # needs; one rigs run at a time (the group below); and every step runs in a
@@ -52,7 +52,7 @@ defaults:
   run:
     shell: nice -n 19 bash -e {0}
 
-# BOUNDED ON THE SHARED WORKBENCH (ini-c5a.7, theguy's conditions, after a
+# BOUNDED ON THE SHARED WORKBENCH (ini-c5a.7, the chief of staff's conditions, after a
 # rigs race job ran beside another project's nightly at a load of 479): every
 # Go process here uses at most 4 OS threads for Go code, and go test runs at
 # most 2 packages at once. Every job runs only from main (a dispatch on

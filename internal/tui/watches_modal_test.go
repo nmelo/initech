@@ -47,7 +47,7 @@ func wmFixture() ([]watch.Watch, *fakeWorld) {
 		wmWatch("w3", "eng8", watch.KindSendDelivered, map[string]string{"pane": "pm", "receipt": "r9"}, "pm re-checks item 4", -2*time.Minute, 8*time.Minute),
 		wmDelivered(wmEnded(wmWatch("w4", "lead3", watch.KindBeadStatus, map[string]string{"bead": "ini-b", "status": "closed"}, "read the Usage change", -66*time.Minute, -6*time.Minute), watch.Missed, 6*time.Minute), 5*time.Minute),
 		wmDelivered(wmEnded(wmWatch("w5", "eng8", watch.KindSendDelivered, map[string]string{"pane": "pm", "receipt": "r2"}, "hand pm the proof", -10*time.Minute, time.Hour), watch.Fired, 4*time.Minute), 4*time.Minute),
-		wmDelivered(wmEnded(wmWatch("w6", "super", watch.KindBeadStatus, map[string]string{"bead": "ini-c", "status": "closed"}, "tell theguy the fix is live", -50*time.Minute, time.Hour), watch.Fired, 38*time.Minute), 38*time.Minute),
+		wmDelivered(wmEnded(wmWatch("w6", "super", watch.KindBeadStatus, map[string]string{"bead": "ini-c", "status": "closed"}, "tell cosrig the fix is live", -50*time.Minute, time.Hour), watch.Fired, 38*time.Minute), 38*time.Minute),
 		wmEnded(wmWatch("w7", "qa2", watch.KindDeadline, nil, "walk it", -30*time.Minute, time.Hour), watch.Cancelled, 12*time.Minute),
 		// Delivered 90 minutes ago: past its hour, not shown.
 		wmDelivered(wmEnded(wmWatch("w8", "eng4", watch.KindDeadline, nil, "old", -3*time.Hour, -2*time.Hour), watch.Fired, 2*time.Hour), 90*time.Minute),
@@ -211,7 +211,7 @@ func wmScreen(t *testing.T) (*TUI, tcell.SimulationScreen) {
 	t.Helper()
 	tu, s := newTestTUIWithScreen("eng8")
 	s.SetSize(200, 40)
-	tu.projectName = "hover"
+	tu.projectName = "north"
 	return tu, s
 }
 
@@ -251,7 +251,7 @@ func TestWatchesModal_DrawsThePicturesShape(t *testing.T) {
 	v := buildWatchesView(ws, world, notStarting, wmT0)
 	tu.drawWatchesModal(s, v, wmT0)
 
-	_, ty := wmFind(t, s, "watches · hover · 3 waiting · 4 ended in the last hour · 1 missed its deadline")
+	_, ty := wmFind(t, s, "watches · north · 3 waiting · 4 ended in the last hour · 1 missed its deadline")
 	mx, my := wmFind(t, s, "1 missed its deadline")
 	if fg, _ := wmStyle(s, mx, my); fg != wmBad {
 		t.Errorf("the missed count is not red")
@@ -458,9 +458,9 @@ func TestWatchesModal_NoStoreAndNoWatches(t *testing.T) {
 		}
 		tu.watchesM = watchesModal{active: true}
 		tu.drawWatchesModal(s, v, wmT0)
-		wmFind(t, s, "watches · hover · 0 waiting · 0 ended in the last hour ")
+		wmFind(t, s, "watches · north · 0 waiting · 0 ended in the last hour ")
 		wmFind(t, s, "no watches")
-		if _, ty := wmFind(t, s, "watches · hover"); strings.Contains(wmRowText(s, ty), "missed") {
+		if _, ty := wmFind(t, s, "watches · north"); strings.Contains(wmRowText(s, ty), "missed") {
 			t.Errorf("%s: a zero missed count is shown", name)
 		}
 		tu.handleWatchesKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
@@ -501,13 +501,13 @@ func TestWatchesModal_TheFrameDrawsItFromTheStore(t *testing.T) {
 	tu.renderFrame()
 	s.Show()
 	for y := 0; y < 40; y++ {
-		if strings.Contains(wmRowText(s, y), "watches · hover") {
+		if strings.Contains(wmRowText(s, y), "watches · north") {
 			t.Fatal("the modal is drawn while closed")
 		}
 	}
 	tu.handleKey(wmAltKey('t'))
 	tu.renderFrame()
-	wmFind(t, s, "watches · hover · 1 waiting · 1 ended in the last hour ")
+	wmFind(t, s, "watches · north · 1 waiting · 1 ended in the last hour ")
 	wmFind(t, s, "cancelled ")
 }
 
@@ -535,7 +535,7 @@ func TestWatchesModal_TheFrameIsThePictures(t *testing.T) {
 			t.Errorf("a default cell behind the modal is not dimmed: bg %v", bg)
 		}
 	}
-	_, ty := wmFind(t, s, "watches · hover")
+	_, ty := wmFind(t, s, "watches · north")
 	x0 := (200 - 192) / 2
 	for _, c := range []struct {
 		x, y int
@@ -645,12 +645,12 @@ func TestWatchesModal_TheBackdropDimsOnceAcrossFrames(t *testing.T) {
 // super: at 70 columns the title was cut mid-word. It is cut at a word, with
 // "…", like the header and footer, and never leaves a separator dangling.
 func TestWatchesModal_ANarrowTitleIsCutAtAWord(t *testing.T) {
-	full := "watches · hover · 3 waiting · 4 ended in the last hour · 1 missed its deadline"
+	full := "watches · north · 3 waiting · 4 ended in the last hour · 1 missed its deadline"
 	tu, s := wmScreen(t)
 	s.SetSize(70, 30)
 	ws, world := wmFixture()
 	tu.drawWatchesModal(s, buildWatchesView(ws, world, notStarting, wmT0), wmT0)
-	x, y := wmFind(t, s, "watches · hover")
+	x, y := wmFind(t, s, "watches · north")
 	row := []rune(wmRowText(s, y))
 	end := x
 	for end < len(row) && row[end] != '…' {
@@ -670,7 +670,7 @@ func TestWatchesModal_ANarrowTitleIsCutAtAWord(t *testing.T) {
 		t.Errorf("the title ends on a dangling separator: %q", shown)
 	}
 	// It keeps every whole word that fits: at 70 columns, up to the hour count.
-	if shown != "watches · hover · 3 waiting · 4 ended in the last hour" {
+	if shown != "watches · north · 3 waiting · 4 ended in the last hour" {
 		t.Errorf("title %q, want it cut after \"hour\", the last whole word that fits", shown)
 	}
 	if row[end+1] != ' ' {
@@ -693,7 +693,7 @@ func TestWatchesModal_TheRoomierLayout(t *testing.T) {
 	ws, world := wmFixture()
 	tu.drawWatchesModal(s, buildWatchesView(ws, world, notStarting, wmT0), wmT0)
 	x0 := watchesMarginX
-	_, ty := wmFind(t, s, "watches · hover")
+	_, ty := wmFind(t, s, "watches · north")
 	if ty < watchesMarginY {
 		t.Errorf("the window starts at row %d, inside the %d-row margin", ty, watchesMarginY)
 	}

@@ -57,7 +57,7 @@ func TestBeadStore_CommaListStillNamesSeveral(t *testing.T) {
 // with more dashes pass.
 func TestBeadID_Shape(t *testing.T) {
 	for s, want := range map[string]bool{
-		"ini-y0n.2": true, "ini-5qf": true, "hov-mol-ox6": true, "ini-a.1.2": true,
+		"ini-y0n.2": true, "ini-5qf": true, "nrt-mol-ox6": true, "ini-a.1.2": true,
 		"": false, " ": false, "not an id": false, "ini": false, "ini-": false, "-abc": false,
 		"ini-a.": false, "ini-a.x": false, "ini-a\tTitle": false, "ini-a,ini-b": false, " ini-a": false,
 	} {

@@ -13,7 +13,7 @@ import (
 // placeholder with "..." below 100 columns and the reader read the cut hint
 // as a draft; Codex wraps its footer at 33 columns and narrower and the
 // reader found no box at all. The captures are real: codex-cli 0.170.0 and
-// agy 1.5.12 at each width, idle and with "fix tests" typed, and hover's.
+// agy 1.5.12 at each width, idle and with "fix tests" typed, and north's.
 
 // narrowRig is agentCaptureRig at the capture's own width, keeping the
 // pane's events.
@@ -43,10 +43,10 @@ func rowsOf(screen string) []string { return strings.Split(screen, "\n") }
 // AC1, AC3: the placeholder reads empty at every width, whole or cut, with
 // or without a spinner glyph; a real short draft still reads as text.
 func TestNarrowPaneReadsItsPlaceholderAsEmpty(t *testing.T) {
-	hover := agentCapture(t, "hover-codex1-w32-idle")
+	north := agentCapture(t, "north-codex1-w32-idle")
 	qa2Codex := agentCapture(t, "qa2-codex-w32-clipped-footer-idle")
-	spinner := strings.Replace(hover, "› Ask Codex to do anything", "› Ask Codex to do anything ⠈", 1)
-	if spinner == hover {
+	spinner := strings.Replace(north, "› Ask Codex to do anything", "› Ask Codex to do anything ⠈", 1)
+	if spinner == north {
 		t.Fatal("the spinner variant did not apply")
 	}
 	for _, tc := range []struct {
@@ -59,8 +59,8 @@ func TestNarrowPaneReadsItsPlaceholderAsEmpty(t *testing.T) {
 		{"codex-w33", codexReader, agentCapture(t, "local-codex-0170-w33-idle"), ""},
 		{"codex-w32", codexReader, agentCapture(t, "local-codex-0170-w32-idle"), ""},
 		{"codex-w26-cut-hint", codexReader, agentCapture(t, "local-codex-0170-w26-idle"), ""},
-		{"hover-codex1-w32", codexReader, hover, ""},
-		{"hover-codex1-w32-spinner", codexReader, spinner, ""},
+		{"north-codex1-w32", codexReader, north, ""},
+		{"north-codex1-w32-spinner", codexReader, spinner, ""},
 		{"codex-w40-draft", codexReader, agentCapture(t, "local-codex-0170-w40-draft"), "fix tests"},
 		{"codex-w33-draft", codexReader, agentCapture(t, "local-codex-0170-w33-draft"), "fix tests"},
 		{"codex-w32-draft", codexReader, agentCapture(t, "local-codex-0170-w32-draft"), "fix tests"},
@@ -94,17 +94,17 @@ func TestNarrowPaneReadsItsPlaceholderAsEmpty(t *testing.T) {
 	}
 }
 
-// hover's agy1 capture was taken after initech interrupt --hard: its last
+// north's agy1 capture was taken after initech interrupt --hard: its last
 // row is agy's "press ctrl+c again to exit", a state pm ruled not built. It
 // stays unread (never free), and the bound ends any hold behind it; its box
 // row alone is the cut hint and reads as the hint.
 func TestNarrowHoverAgyAfterCtrlCStaysUnread(t *testing.T) {
-	screen := agentCapture(t, "hover-agy1-w33-ctrlc")
+	screen := agentCapture(t, "north-agy1-w33-ctrlc")
 	if f := agyReader.read(rowsOf(screen)); f.free() || f.box {
 		t.Fatalf("ctrl+c state read as %+v", f)
 	}
 	if !agyHintOnly("Auto mode: edits & safe com...") {
-		t.Fatal("hover's cut hint is not the hint")
+		t.Fatal("north's cut hint is not the hint")
 	}
 }
 
@@ -120,7 +120,7 @@ func TestNarrowEmptyAndOneColumnScreensNeverReadFree(t *testing.T) {
 	}
 }
 
-// AC2: a send to hover's Codex tile at 32 columns, and to agy's cut hint at
+// AC2: a send to north's Codex tile at 32 columns, and to agy's cut hint at
 // 33, is typed and delivered on its proof (at base: held forever).
 func TestNarrowSendToHoverWidthsGoesThrough(t *testing.T) {
 	for _, tc := range []struct {
@@ -128,7 +128,7 @@ func TestNarrowSendToHoverWidthsGoesThrough(t *testing.T) {
 		cols                int
 		hint, typed         string
 	}{
-		{"codex", "hover-codex1-w32-idle", "", 32, "› Ask Codex to do anything", "› fix tests"},
+		{"codex", "north-codex1-w32-idle", "", 32, "› Ask Codex to do anything", "› fix tests"},
 		{"generic", "local-agy-1512-w33-idle", "local-agy-1512-w33-draft", 33, "", ""},
 		{"codex", "qa2-codex-w32-clipped-footer-idle", "", 32, "› Ask Codex to do anything", "› fix tests"},
 	} {
@@ -187,7 +187,7 @@ func (m *menuChild) attach(f *pkinFake) {
 // extra text after Esc, a Backspace count by bytes.
 func TestNarrowAgySlashMenuIsClosedAndOurTextRemoved(t *testing.T) {
 	idle := agentCapture(t, "local-agy-1512-w33-idle")
-	menu := agentCapture(t, "hover-agy1-w33-slash-menu")
+	menu := agentCapture(t, "north-agy1-w33-slash-menu")
 	afterEsc := agentCapture(t, "local-agy-1512-w33-menu-after-esc")
 	cleaned := agentCapture(t, "local-agy-1512-w33-menu-cleaned")
 	for _, tc := range []struct {

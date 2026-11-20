@@ -4,7 +4,7 @@
 • The rerun passed on 43eb89490. Both
   the affected Go tests and runner
   cleanup succeeded. I posted the
-  result on ◎ hov-6g1lm, satisfying
+  result on ◎ nrt-6g1lm, satisfying
   super’s last condition for closure.
   Rerun job
 
@@ -14,5 +14,5 @@
 › Ask Codex to do anything
 
   GPT-6.2-Astra xhigh · Context 81%
-  left · ~/Desktop/Projects/hover/…
+  left · ~/Desktop/Projects/north/…
   ← for agents              ⚠ 1 · f2

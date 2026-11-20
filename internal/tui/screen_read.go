@@ -4,7 +4,7 @@
 // The emulator's lock can be held indefinitely by a goroutine that is not the
 // main loop: readLoop blocked inside emu.Write on the emulator's response pipe
 // while responseLoop is blocked in ptmx.Write because the child stopped
-// reading. hover's window froze for 30+ hours behind exactly that. Every
+// reading. north's window froze for 30+ hours behind exactly that. Every
 // main-loop read that took the lock parked the whole window -- first the
 // modal tick, then attention detection, and next in frame order pane
 // rendering itself. Patching each caller is the wrong level: the guarantee is

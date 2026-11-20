@@ -68,7 +68,7 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		// ONE NON-BLOCKING READ PER PANE PER TICK (ini-psjt). Everything below
 		// that looks at the screen looks at this snapshot. Through the blocking
 		// accessors, a single pane whose emulator lock was held by a stalled
-		// writer parked the main loop -- hover's window, 30+ hours, 11,779
+		// writer parked the main loop -- north's window, 30+ hours, 11,779
 		// watchdog dumps -- because the lock was taken here, on the goroutine
 		// that renders every other pane. A held lock now costs this pane one
 		// tick, and the skip is recorded so a wedged pane is visible rather

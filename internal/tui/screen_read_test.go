@@ -19,14 +19,14 @@ import (
 //
 //   - readLoop's shape: renderMu held, then the emulator's write lock held
 //     inside Write while the DSR reply blocks on the undrained pipe. This is
-//     hover's cycle.
+//     north's cycle.
 //   - the emulator alone (qa1's reproduction): the write lock held with
 //     renderMu free.
 //
 // Each cell asserts two things: the call returns promptly, and the pane's
 // state is KEPT, not cleared -- "cannot read" is never "not on screen".
 
-// holdLikeReadLoop wedges p the way hover's readLoop was wedged. Cleanup
+// holdLikeReadLoop wedges p the way north's readLoop was wedged. Cleanup
 // (undrainedEmu's) drains the pipe so the holder can exit.
 func holdLikeReadLoop(t *testing.T, p *Pane) {
 	t.Helper()

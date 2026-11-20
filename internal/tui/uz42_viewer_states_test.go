@@ -9,7 +9,7 @@ package tui
 // stream is still in flight -- so the common case was a blank window
 // explaining nothing and a log warning about correct behaviour.
 //
-// Reproduced by ini-g8n9 at 694985f from captured hover state: 41 streams, 10
+// Reproduced by ini-g8n9 at 694985f from captured north state: 41 streams, 10
 // owned, all 10 hidden, zero planned, hint empty.
 
 import (
@@ -34,7 +34,7 @@ func uz42Viewer(t *testing.T) (*TUI, []string) {
 // TestUZ42_AllHiddenViewerExplainsItsEmptyPlan pins the VERBATIM copy on a
 // synthetic fixture. eng3's TestG8N9_AllHiddenViewerExplainsItsEmptyPlan
 // (g8n9_contract_probe_test.go) is the promoted investigation probe and runs
-// on the captured hover state instead; it asserts the classification, not the
+// on the captured north state instead; it asserts the classification, not the
 // words. Both are kept: one records operator evidence, one pins the decision.
 //
 // The operator hid every agent assigned to this window. That is a legal state

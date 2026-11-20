@@ -13,7 +13,7 @@ package tui
 // to 20000 lines and with /bin/echo fork+exec pacing at 3000) never
 // overflowed dataCh here -- window 2's render loop, doing nothing else,
 // drains a single busy pane easily whatever its throughput. The ORIGINAL
-// bug report was a 41-agent hover session: many panes competing for one
+// bug report was a 41-agent north session: many panes competing for one
 // render tick's budget. Three agents bursting at once is the same shape at
 // rig scale.
 //

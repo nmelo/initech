@@ -19,15 +19,15 @@ import (
 // stripSceneLines is what the agent's screen holds in every strip golden: the
 // picture's reply, prompt and status, so the strip's rows sit under real text.
 var stripSceneLines = []string{
-	"● I sent hover the release order. It's cutting a release from main now.",
+	"● I sent north the release order. It's cutting a release from main now.",
 	"",
-	"  Once the release is live, hover checks production.",
+	"  Once the release is live, north checks production.",
 	"",
 	"✻ Crunched for 10s · done 8:52 AM",
 	"────────────────────────────────────────",
 	"❯ ",
 	"────────────────────────────────────────",
-	"  ⎇ main │ Fable 5.2 │ Camila │ 19% │ 41%",
+	"  ⎇ main │ Fable 5.2 │ Fourth │ 19% │ 41%",
 	"  ⏵⏵ bypass permissions on (shift+tab to cycle)",
 }
 

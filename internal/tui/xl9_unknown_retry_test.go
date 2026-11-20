@@ -227,10 +227,10 @@ func TestUnknownRetry_OnlyOurTextInTheBoxGetsTheEnter(t *testing.T) {
 		"a short piece only": {"ok\n" + nma5Body, "❯ ok", 0},
 		"cropped to its last lines": {
 			"first line of the stuck body\nsecond line of the stuck body\nthird line of the stuck body\nfourth line ends it",
-			"third line of the stuck body\r\nfourth line ends it\r\n" + rule + "\r\n  Haiku 5.5 │ Zola │ 4%", 1},
+			"third line of the stuck body\r\nfourth line ends it\r\n" + rule + "\r\n  Haiku 5.5 │ Solo │ 4%", 1},
 		"cropped with a draft after": {
 			"first line of the stuck body\nsecond line of the stuck body\nthird line of the stuck body\nfourth line ends it",
-			"third line of the stuck body\r\nfourth line ends it plus mine\r\n" + rule + "\r\n  Haiku 5.5 │ Zola │ 4%", 0},
+			"third line of the stuck body\r\nfourth line ends it plus mine\r\n" + rule + "\r\n  Haiku 5.5 │ Solo │ 4%", 0},
 	} {
 		t.Run(name, func(t *testing.T) {
 			p, submits, _ := proofPane(t)

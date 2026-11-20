@@ -7,7 +7,7 @@
   Antigravity CLI 1.5.12
   operator@mail.test
   Gemini 4 Carbon (High)
-  ~/Desktop/Projects/hover/agy1
+  ~/Desktop/Projects/north/agy1
 
 ─────────────────────────────────
 > /clear

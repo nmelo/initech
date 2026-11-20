@@ -12,7 +12,7 @@ import (
 )
 
 // g8n9Viewer exercises the production loaders, follower projection, served
-// ownership and applyLayout using the captured hover stores. RemotePane
+// ownership and applyLayout using the captured north stores. RemotePane
 // objects stand in only for already-arrived streams: no transport, terminal
 // timing or emulator behavior is claimed by this planning instrument.
 func g8n9Viewer(t *testing.T, historicalEight bool) *TUI {

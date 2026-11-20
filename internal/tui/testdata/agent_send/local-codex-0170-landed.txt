@@ -24,5 +24,5 @@
 › Ask Codex to do anything
 
   GPT-6.2-Sol high · Context 96% left · /private/tmp/i8wn0.qOacCihz/codex-seat · Context 4% used · weekly
-  63% left · 00000000-0000-0000-0000-000000000000
+  63% left · 0f0f0f0f-1111-4222-8333-444444444444
   ← for agents · ? for shortcuts

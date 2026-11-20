@@ -349,7 +349,7 @@ func TestWatchDeliver_AHandedLinesReceiptIsKept(t *testing.T) {
 	})
 }
 
-// The four stop points (theguy's AC): a stop at each, then a restart; the
+// The four stop points (the chief of staff's AC): a stop at each, then a restart; the
 // line goes out exactly once, never zero, never two.
 
 // Stop after (1): the ending is on disk, nothing handed, held mail empty.

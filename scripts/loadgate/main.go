@@ -1,4 +1,4 @@
-// loadgate holds a CI job on the shared Mac runner host (192.168.1.207) until
+// loadgate holds a CI job on the shared Mac runner host (192.0.2.207) until
 // the host can take it, so initech's jobs do not pile onto another project's
 // nightly build (ini-c5a.7, the operator's conditions). It runs once, at the
 // start of each first-wave job, right after checkout:

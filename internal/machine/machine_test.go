@@ -67,8 +67,8 @@ func TestFleet_TwoRigsSumAndAStaleFileIsIgnored(t *testing.T) {
 	now := time.Date(2026, 11, 5, 1, 0, 0, 0, time.UTC)
 	for _, f := range []FleetFile{
 		{Rig: "initech", PID: 1, Time: now, Awake: 9}, // our own: not summed here
-		{Rig: "hover", PID: 2, Time: now.Add(-time.Minute), Awake: 7},
-		{Rig: "theguy", PID: 3, Time: now.Add(-30 * time.Second), Awake: 4},
+		{Rig: "north", PID: 2, Time: now.Add(-time.Minute), Awake: 7},
+		{Rig: "cosrig", PID: 3, Time: now.Add(-30 * time.Second), Awake: 4},
 		{Rig: "old", PID: 4, Time: now.Add(-StaleAfter), Awake: 50}, // three minutes: stale
 		{Rig: "gone", PID: 5, Time: now, Awake: 60},                 // pid gone
 	} {
@@ -78,7 +78,7 @@ func TestFleet_TwoRigsSumAndAStaleFileIsIgnored(t *testing.T) {
 	}
 	alive := func(pid int) bool { return pid != 5 }
 	if got := SumOthers(dir, "initech", now, alive); got != 11 {
-		t.Fatalf("sum of other rigs = %d, want 11 (hover 7 + theguy 4; old is stale, gone has no pid)", got)
+		t.Fatalf("sum of other rigs = %d, want 11 (north 7 + cosrig 4; old is stale, gone has no pid)", got)
 	}
 }
 

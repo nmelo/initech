@@ -48,7 +48,7 @@ var blockingScreenReaders = map[string]bool{
 // to the goroutine it runs on and why waiting there is acceptable.
 var lockingCallAllowlist = map[string]string{
 	// The writer side. readLoop is the goroutine that holds the lock in
-	// hover's cycle; it may wait on itself.
+	// north's cycle; it may wait on itself.
 	"Pane.readLoop":                 "readLoop goroutine: the writer itself",
 	"Pane.checkAltScreenTransition": "readLoop goroutine, under renderMu after Write",
 	"Pane.resizeLocked":             "readLoop (alt-screen transition) and daemon Resize; the main loop uses resizeFromMainLoop",

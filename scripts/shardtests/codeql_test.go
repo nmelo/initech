@@ -12,7 +12,7 @@ import (
 )
 
 // CodeQL runs weekly and on demand, never on push (ini-7h5, the operator via
-// theguy): codeql.yml is the repo's only code scan (default setup is off), it
+// the chief of staff): codeql.yml is the repo's only code scan (default setup is off), it
 // starts only on its weekly schedule and on workflow_dispatch, it scans the
 // four languages default setup scanned with the categories default setup
 // used, and every job runs on a GitHub-hosted image (ubuntu-latest, and

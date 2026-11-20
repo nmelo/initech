@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// ini-cctz: hover had three windows attached and the Agents panel showed two,
+// ini-cctz: north had three windows attached and the Agents panel showed two,
 // because the window list was derived from GROUP ASSIGNMENTS alone. A window
 // connected with nothing assigned contributed no band, so the operator could
 // not tell "nothing assigned" from "never connected".

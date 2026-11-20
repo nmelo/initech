@@ -18,7 +18,7 @@ import (
 //
 // Sources: Claude Code 2.1.310 screens on Haiku (claude --model haiku), this
 // rig's live Opus, Sonnet and Fable panes read with initech peek, and
-// theguy's pa pane (rows relayed on the bead). Account names are replaced by
+// the chief of staff's pa pane (rows relayed on the bead). Account names are replaced by
 // a placeholder of the same length.
 
 func corpusFooter(t *testing.T, name string) ([]string, int) {
@@ -46,29 +46,29 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		want Footer
 	}{
 		// The input box's top rule carries the session name (ini-2tec).
-		{"theguy_pa_w94.txt", none(i(73), s("Opus 5.5"), s("Second"))},
+		{"cosrig_pa_w94.txt", none(i(73), s("Opus 5.5"), s("Second"))},
 		{"haiku310_label_pa_w94.txt", none(i(0), s("Haiku 5.5"), s("Second"))},
 		{"haiku310_label_accountant_w94.txt", none(i(0), s("Haiku 5.5"), s("Second"))},
 		{"haiku310_label_pa_w40.txt", none(i(0), s("Haiku 5.5"), s("Second"))},
-		// hover's and nayutal's supers (rows relayed on the bead): a model
+		// north's and eastrig's supers (rows relayed on the bead): a model
 		// segment with a suffix, and background work on the mode line.
-		{"hover_1m_3shells_w118.txt", Footer{i(46), i(3), zero, zero, s("Opus 5.5 (1M context)"), s("Second")}},
-		{"nayutal_1m_2monitors_w109.txt", Footer{i(46), zero, i(2), zero, s("Opus 5.5 (1M context)"), s("Second")}},
-		// nayutal (54 columns) and hover's other panes: no branch segment,
+		{"north_1m_3shells_w118.txt", Footer{i(46), i(3), zero, zero, s("Opus 5.5 (1M context)"), s("Second")}},
+		{"eastrig_1m_2monitors_w109.txt", Footer{i(46), zero, i(2), zero, s("Opus 5.5 (1M context)"), s("Second")}},
+		// eastrig (54 columns) and north's other panes: no branch segment,
 		// "0%", a two-word label, the 1M-context model cut and uncut.
-		{"nayutal_opus_1shell_w54.txt", Footer{i(39), i(1), zero, zero, s("Opus 5.5"), s("Second")}},
-		{"nayutal_fable_idle_w54.txt", none(i(46), s("Fable 5.1"), s("Second"))},
-		{"nayutal_sonnet_nobranch_w54.txt", none(i(0), s("Sonnet 5.5"), s("Second"))},
-		{"hover_super_label_w118.txt", Footer{i(46), i(3), zero, zero, s("Opus 5.5 (1M context)"), s("Second")}},
-		{"hover_video_1m_cut_w89.txt", none(i(32), s("Opus 5.5 (1M context)"), s("Second"))},
-		{"hover_qa4_sonnet_nobranch_w90.txt", Footer{i(43), i(1), zero, zero, s("Sonnet 5.5"), s("Second")}},
-		// Relayed footer rows below a reconstructed empty box. The hover
-		// report quotes only the mode row. Thegal's narrow panes cut the
-		// agent hint; nayutal's wider pane shows it in full.
-		{"hover_video_auto_monitor.txt", Footer{nil, zero, i(1), zero, nil, nil}},
-		{"thegal_eng1_bypass_agent.txt", Footer{i(49), nil, nil, zero, s("Fable 5.2"), s("Second")}},
-		{"thegal_pa_bypass_agent.txt", Footer{i(51), nil, nil, zero, s("Sonnet 5.5"), s("Second")}},
-		{"nayutal_eng9_bypass_agent.txt", none(i(17), s("Opus 5.5"), s("Second"))},
+		{"eastrig_opus_1shell_w54.txt", Footer{i(39), i(1), zero, zero, s("Opus 5.5"), s("Second")}},
+		{"eastrig_fable_idle_w54.txt", none(i(46), s("Fable 5.1"), s("Second"))},
+		{"eastrig_sonnet_nobranch_w54.txt", none(i(0), s("Sonnet 5.5"), s("Second"))},
+		{"north_super_label_w118.txt", Footer{i(46), i(3), zero, zero, s("Opus 5.5 (1M context)"), s("Second")}},
+		{"north_video_1m_cut_w89.txt", none(i(32), s("Opus 5.5 (1M context)"), s("Second"))},
+		{"north_qa4_sonnet_nobranch_w90.txt", Footer{i(43), i(1), zero, zero, s("Sonnet 5.5"), s("Second")}},
+		// Relayed footer rows below a reconstructed empty box. The north
+		// report quotes only the mode row. Cmorig's narrow panes cut the
+		// agent hint; eastrig's wider pane shows it in full.
+		{"north_video_auto_monitor.txt", Footer{nil, zero, i(1), zero, nil, nil}},
+		{"cmorig_eng1_bypass_agent.txt", Footer{i(49), nil, nil, zero, s("Fable 5.2"), s("Second")}},
+		{"cmorig_pa_bypass_agent.txt", Footer{i(51), nil, nil, zero, s("Sonnet 5.5"), s("Second")}},
+		{"eastrig_eng9_bypass_agent.txt", none(i(17), s("Opus 5.5"), s("Second"))},
 		// This rig's live panes, about 58 and 75 columns, bypass mode.
 		{"fleet_qa1.txt", none(i(42), s("Sonnet 5.5"), s("Second"))},
 		{"fleet_super.txt", Footer{i(22), zero, i(1), zero, s("Opus 5.5"), s("Second")}},
@@ -77,9 +77,9 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		{"fleet_eng1.txt", none(i(0), s("Opus 5.5"), s("Second"))},
 		{"fleet_eng2.txt", none(i(54), s("Opus 5.5"), s("Second"))},
 		{"fleet_eng4.txt", none(i(0), s("Opus 5.5"), s("Second"))},
-		// nayutal eng6, a 32-column pane held "modal open" by a dialog latch
+		// eastrig eng6, a 32-column pane held "modal open" by a dialog latch
 		// that never cleared (ini-gav); the mode line is cut after "· 1".
-		{"nayutal_eng6_latched_w32.txt", Footer{i(60), nil, nil, zero, s("Opus 5.5"), s("Second2")}},
+		{"eastrig_eng6_latched_w32.txt", Footer{i(60), nil, nil, zero, s("Opus 5.5"), s("Second2")}},
 		// Claude Code 2.1.312 on Haiku, 36 columns (ini-gav): a background
 		// shell, then two shells and a background subagent listed below.
 		{"haiku312_bgshell_w36.txt", Footer{i(6), i(1), zero, zero, s("Haiku 5.5"), s("Other")}},

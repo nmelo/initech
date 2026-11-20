@@ -1,7 +1,7 @@
     failure.                                                                  
   - Saved: the bead database is backed up, and my files match main.           
   - Still running: pm and shipper are finishing their last turns. I'll suspend
-    them, then tell theguy "ready".                                           
+    them, then tell cosrig "ready".                                           
                                                                               
   Waiting on you (0 beads waiting on Nelson)                                  
   - Now: nothing.                                                             
@@ -17,7 +17,7 @@ completed (exit code 0)
                                                                               
   Ran 1 shell command                                                         
                                                                               
-⏺ I've told theguy the rig is ready to stop.                                  
+⏺ I've told cosrig the rig is ready to stop.                                  
                                                                               
   - Release in use: v2.59.0. v2.60.0 was held at the two-window check and     
     never tagged.                                                             
@@ -47,5 +47,5 @@ completed (exit code 0)
 ────────────────────────────────────────────────────────────── Initech super ─
 ❯                                                                             
 ──────────────────────────────────────────────────────────────────────────────
-  ⎇ main │ Opus 5.5 │ Zola │ 84% │ 14% ▓░░░░░░░┃░ → 09:30 AM │ 56% ▓▓▓▓▓▓░░…  
+  ⎇ main │ Opus 5.5 │ Solo │ 84% │ 14% ▓░░░░░░░┃░ → 09:30 AM │ 56% ▓▓▓▓▓▓░░…  
   ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                

@@ -42,7 +42,7 @@ func shapesFixture() []string {
 		tline("assistant", "a1", t0.Add(3*time.Second), []map[string]any{{"type": "tool_use", "id": "tu1", "name": "Bash",
 			"input": map[string]any{"command": "make check-fast\necho done", "description": "Run check-fast"}}}),
 		tline("user", "r1", t0.Add(4*time.Second), []map[string]any{{"type": "tool_result", "tool_use_id": "tu1", "content": "go build ./...\nok"}}),
-		tline("assistant", "a2", t0.Add(5*time.Second), []map[string]any{{"type": "text", "text": "Landed it.\n\nCI is green.\n\n- ▶ Approve the release? Recommend yes.\n▶ Restart hover?"}}),
+		tline("assistant", "a2", t0.Add(5*time.Second), []map[string]any{{"type": "text", "text": "Landed it.\n\nCI is green.\n\n- ▶ Approve the release? Recommend yes.\n▶ Restart north?"}}),
 		`{"type":"user","uuid":"m1","isMeta":true,"message":{"role":"user","content":"<command-name>/clear</command-name>"}}`,
 		`{"type":"api-request","blob":"x"}`,
 	}
@@ -79,7 +79,7 @@ func TestConversation_RendersTheMessageShapes(t *testing.T) {
 	}
 	reply := got[3]
 	if reply.Kind != KindAgent || reply.Text != "Landed it.\n\nCI is green." ||
-		!reflect.DeepEqual(reply.Footer, []string{"- ▶ Approve the release? Recommend yes.", "▶ Restart hover?"}) {
+		!reflect.DeepEqual(reply.Footer, []string{"- ▶ Approve the release? Recommend yes.", "▶ Restart north?"}) {
 		t.Errorf("reply = %q footer %q", reply.Text, reply.Footer)
 	}
 	for _, m := range got {
@@ -262,7 +262,7 @@ func TestConversation_LiveRecordShapes(t *testing.T) {
 		flagged("n7", "isSidechain", "a subagent's prompt"),
 		queued("n8", "task-notification", "<task-notification>z</task-notification>"),
 		`{"type":"attachment","uuid":"n9","timestamp":"2026-11-01T03:00:00Z","attachment":{"type":"total_tokens_reminder"}}`,
-		queued("q1", "prompt", "look at hover next"),
+		queued("q1", "prompt", "look at north next"),
 		queued("q2", "prompt", "[from eng7] Blockers need one thing."),
 		queued("q3", "prompt", []map[string]any{{"type": "text", "text": "and restart it"}}),
 		tline("user", "keep", t0, "<b>bold</b> is what I typed"),
@@ -278,7 +278,7 @@ func TestConversation_LiveRecordShapes(t *testing.T) {
 		got = append(got, m.ID+"|"+m.Kind+"|"+m.From+"|"+m.Text)
 	}
 	want := []string{
-		"q1|nelson||look at hover next",
+		"q1|nelson||look at north next",
 		"q2|message|eng7|Blockers need one thing.",
 		"q3|nelson||and restart it",
 		"keep|nelson||<b>bold</b> is what I typed",
@@ -334,8 +334,8 @@ func TestSplitFooter_TheLastParagraphsTriangleLines(t *testing.T) {
 		in, body string
 		footer   []string
 	}{
-		"items then bullets": {"Done.\n\n- ▶ Approve v2.50? Recommend yes.\n- ▶ Restart hover?\n- Bug hunt: 3 open\n- Fleet: idle",
-			"Done.\n\n- Bug hunt: 3 open\n- Fleet: idle", []string{"- ▶ Approve v2.50? Recommend yes.", "- ▶ Restart hover?"}},
+		"items then bullets": {"Done.\n\n- ▶ Approve v2.50? Recommend yes.\n- ▶ Restart north?\n- Bug hunt: 3 open\n- Fleet: idle",
+			"Done.\n\n- Bug hunt: 3 open\n- Fleet: idle", []string{"- ▶ Approve v2.50? Recommend yes.", "- ▶ Restart north?"}},
 		"bare marker":    {"Done.\n\n▶ nothing", "Done.", []string{"▶ nothing"}},
 		"star marker":    {"Done.\n\n* ▶ one", "Done.", []string{"* ▶ one"}},
 		"only a footer":  {"- ▶ one", "", []string{"- ▶ one"}},

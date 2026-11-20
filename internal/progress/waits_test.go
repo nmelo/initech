@@ -113,7 +113,7 @@ func TestJudge_OnlyWaitingBeadsAskTheWorld(t *testing.T) {
 }
 
 // AC5: stuck is unchanged, a waiting bead whose wait is over counts waiting
-// and over whatever its age, and never stuck; the stuck setting's three hover
+// and over whatever its age, and never stuck; the stuck setting's three north
 // cases stay where they were.
 func TestCounts_OverIsWaitingNeverStuck(t *testing.T) {
 	in := hoverWaitingInput()
@@ -135,7 +135,7 @@ func TestCounts_OverIsWaitingNeverStuck(t *testing.T) {
 		t.Fatalf("the over bead a minute old: row %+v, over %d", row, r.WaitingOver)
 	}
 	if len(r.Waiting) != 5 {
-		t.Errorf("waiting %d, want the four hover cases and the over bead", len(r.Waiting))
+		t.Errorf("waiting %d, want the four north cases and the over bead", len(r.Waiting))
 	}
 	p := PaceOver(in.Beads, "hov-w", in.Panes, in.Rule, in.Now, HeaderWindow)
 	if p.Over != 1 || !strings.HasSuffix(p.Line(), "· 5 waiting · 1 over") {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # rigs-resources.sh: what a rigs job used on the shared workbench (ini-c5a.7,
-# theguy's condition: each rigs job records its peak memory, process count
+# the chief of staff's condition: each rigs job records its peak memory, process count
 # and disk use in its own log).
 #
 #   rigs-resources.sh start   # in the foreground, from the job's first step

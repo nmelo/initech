@@ -142,7 +142,7 @@ func parkPaneSuspended(pane *Pane) {
 // parkPaneRecorded is the TUI-level park: THE primitive above, plus the
 // fleet-state record that survives restarts. The record is what makes the
 // next launch cold-park this agent instead of booting it (persisted
-// suspension — hover, 2026-08-15: a 39-agent launch spent its storm booting
+// suspension — north, 2026-08-15: a 39-agent launch spent its storm booting
 // agents that memory pressure had deliberately parked, then re-shed them at
 // 2 per 10s). Both park call sites — the pressure loop and `initech
 // suspend` — go through here, preserving the one-mechanism guarantee.

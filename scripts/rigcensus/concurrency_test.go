@@ -21,9 +21,9 @@ const mainPushOnlyGroup = "${{ github.workflow }}-${{ (github.event_name == 'pus
 // against a cancelled run: a release-branch or tag run that a concurrency group
 // could cancel leaves the cut with no CI or rig evidence. ci.yml must carry
 // exactly the main-push-only group with cancel-in-progress off (ini-c5a.7, the
-// operator via theguy): a started main run always finishes and a burst
+// operator via the chief of staff): a started main run always finishes and a burst
 // collapses to the newest pending sha. rigs.yml carries one literal group for
-// every run, so at most one rigs run is on the workbench at a time (theguy's
+// every run, so at most one rigs run is on the workbench at a time (the chief of staff's
 // condition), also with cancel off. release.yml, which builds and publishes a
 // tag, must carry no concurrency at all.
 func TestWorkflows_OnlyMainPushesShareAConcurrencyGroup(t *testing.T) {

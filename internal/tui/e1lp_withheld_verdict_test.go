@@ -8,7 +8,7 @@ import (
 )
 
 // ini-e1lp: after a withhold, a box that empties may have been submitted by
-// another key (theguy's stopgap pressed Enter at 12:00:47 and the sender was
+// another key (the chief of staff's stopgap pressed Enter at 12:00:47 and the sender was
 // told NOT DELIVERED). The withheld verdict is DELIVERED only on the
 // two-sided proof or the queued line, NOT DELIVERED only on sight, UNKNOWN
 // otherwise. Deadlines are set by hand; every wait is on an event.
@@ -18,7 +18,7 @@ const e1Body = "how did the key reach the Mac kind, and by whose hand?"
 var e1Rule = strings.Repeat("─", 31)
 
 // The withhold: a named session's scrolled box holding the end of our body
-// (theguy's 49-column shape, here at 31 columns from hover's capture).
+// (the chief of staff's 49-column shape, here at 31 columns from north's capture).
 var e1Before = []string{
 	"✻ Baked for 1m 7s · done 10:26",
 	"",
@@ -44,7 +44,7 @@ var e1Delivered = []string{
 	"  ⎇ main │ Opus 5.5 │ Fifth …",
 }
 
-// theguy's case as the pane can show it: the box emptied, our message not
+// the chief of staff's case as the pane can show it: the box emptied, our message not
 // (yet) drawn above it.
 var e1Emptied = []string{
 	"✻ Baked for 1m 7s · done 10:26",
@@ -97,7 +97,7 @@ func (r *e1Rig) keys(t *testing.T) string {
 	return strings.TrimSuffix(all.String(), "<<end>>")
 }
 
-// AC1, theguy's case: a box emptied by another key is never NOT DELIVERED.
+// AC1, the chief of staff's case: a box emptied by another key is never NOT DELIVERED.
 // Before the deadline it waits; at it, UNKNOWN, a capture, and the sender
 // told it may or may not have arrived. No key is pressed.
 func TestWithheldE1lp_AnEmptiedBoxIsNeverNotDelivered(t *testing.T) {

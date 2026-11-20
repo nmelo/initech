@@ -26,7 +26,7 @@ import (
 const macGuard = "${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}"
 
 // linuxGuard is the same guard for the workbench runners (initech-ci on
-// 192.168.1.100): a pull_request run goes to GitHub-hosted ubuntu-latest.
+// 192.0.2.100): a pull_request run goes to GitHub-hosted ubuntu-latest.
 const linuxGuard = "${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}"
 
 // rigsGuard is the same guard for the two workbench runners labelled

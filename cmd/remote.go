@@ -117,7 +117,7 @@ func runRemoteAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%q is not a remote name: letters, digits and hyphens, and not %s", name, tui.WindowOnePeerName)
 	}
 	if _, _, err := net.SplitHostPort(remoteAddr); err != nil {
-		return fmt.Errorf("--addr must be host:port, like 192.168.1.100:7391")
+		return fmt.Errorf("--addr must be host:port, like 192.0.2.100:7391")
 	}
 	out := cmd.OutOrStdout()
 	var token string

@@ -235,12 +235,12 @@ func TestBlockers_QuietRigAndNoRig(t *testing.T) {
 // The JSON the endpoint serves: empty lists are [], never null, and every
 // rig of the snapshot has a row in order.
 func TestBlockers_JSONShape(t *testing.T) {
-	s := Snapshot{Now: now, Rigs: []RigSnapshot{{Rig: "initech"}, {Rig: "theguy", Panes: []PaneSnapshot{superPane(reply("x", "- ▶ Your go"))}}}}
+	s := Snapshot{Now: now, Rigs: []RigSnapshot{{Rig: "initech"}, {Rig: "cosrig", Panes: []PaneSnapshot{superPane(reply("x", "- ▶ Your go"))}}}}
 	b, err := json.Marshal(Blockers(s))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `[{"rig":"initech","waiting":[],"stuck":[],"quiet":true},{"rig":"theguy","waiting":[{"pane":"super","text":"Your go","recommendation":""}],"stuck":[],"quiet":false}]`
+	want := `[{"rig":"initech","waiting":[],"stuck":[],"quiet":true},{"rig":"cosrig","waiting":[{"pane":"super","text":"Your go","recommendation":""}],"stuck":[],"quiet":false}]`
 	if string(b) != want {
 		t.Errorf("json =\n%s\nwant\n%s", b, want)
 	}

@@ -34,7 +34,7 @@ func g242WriteLayout(t *testing.T, root string, pl PersistentLayout) {
 }
 
 // g242Arrangement is six hand-built groups, a custom order and mode main over
-// 41 agents -- the operator's shape on hover.
+// 41 agents -- the operator's shape on north.
 func g242Arrangement(names []string) PersistentLayout {
 	groups := []string{"core", "engops", "backend", "frontend", "qa", "ops"}
 	groupOf := map[string]string{}

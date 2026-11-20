@@ -204,7 +204,7 @@ func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
 	if started != 7 {
 		t.Errorf("%d jobs start without needs, want 7, one per runner: the six shards and build-and-test", started)
 	}
-	// Main CI is Linux only, on the workbench (the operator via theguy): every
+	// Main CI is Linux only, on the workbench (the operator via the chief of staff): every
 	// job, the census included, runs on its guarded selector.
 	for _, key := range got {
 		if w.Jobs[key].RunsOn != linuxGuard {

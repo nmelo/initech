@@ -2,7 +2,7 @@
       ▄▀▀▄        Antigravity CLI 1.5.11
      ▀▀▀▀▀▀       aaaaaa@example.org (Google AI Ultra)
     ▀▀▀▀▀▀▀▀      Claude Opus 5.5 (High)
-   ▄▀▀    ▀▀▄     ~/Desktop/Projects/hover/agy4
+   ▄▀▀    ▀▀▄     ~/Desktop/Projects/north/agy4
   ▄▀▀      ▀▀▄
 
 ────────────────────────────────────────────────────────────
@@ -10,9 +10,9 @@
 
 ○ Thought for 12.2s (I'm checking CLAUDE.md for the "Shared Mac," "Secrets,"...)
 ● Explored 1 file (TASK.md)
-● Ran (cd /Users/nmelo/Desktop/Projects/hover/agy4 && ls tmp/4ej7s/ && cat...)
+● Ran (cd /Users/owner/Desktop/Projects/north/agy4 && ls tmp/4ej7s/ && cat...)
 ● Explored 1 file (output.txt)
-● Ran 2 commands (cd /Users/nmelo/Desk... ×2) (ctrl+o to expand)
+● Ran 2 commands (cd /Users/owner/Desk... ×2) (ctrl+o to expand)
 
   Let me read Verification rules and Shared Mac sections specifically.
 ⣷  Running command...

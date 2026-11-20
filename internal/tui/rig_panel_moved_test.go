@@ -55,7 +55,7 @@ func busyBeads() []movedBead {
 
 // TestMoved_OrderNestingNewestFirstAndTheRigsRow is AC1's shape.
 func TestMoved_OrderNestingNewestFirstAndTheRigsRow(t *testing.T) {
-	got := movedText(movedRows(busyBeads(), panelNow, 20, "hover"))
+	got := movedText(movedRows(busyBeads(), panelNow, 20, "north"))
 	want := strings.Join([]string{
 		"h.pnxg Today 1/7 0.3/h ",
 		"  h.78 qa 1m",
@@ -65,7 +65,7 @@ func TestMoved_OrderNestingNewestFirstAndTheRigsRow(t *testing.T) {
 		"    h.76.1 commit 3m",
 		"    h.76.2 comment 6m",
 		"h.71 Release 1/1 0.3/h ",
-		"[hover]",
+		"[north]",
 		"  h.dcz9 waiting 5m",
 	}, "\n")
 	if got != want {
@@ -76,7 +76,7 @@ func TestMoved_OrderNestingNewestFirstAndTheRigsRow(t *testing.T) {
 // TestMoved_TheHeightKeepsEffortRowsAndTheNewestBeads: effort rows first,
 // then the newest beads, a +n more under each effort that lost rows.
 func TestMoved_TheHeightKeepsEffortRowsAndTheNewestBeads(t *testing.T) {
-	got := movedText(movedRows(busyBeads(), panelNow, 8, "hover"))
+	got := movedText(movedRows(busyBeads(), panelNow, 8, "north"))
 	// Four effort rows leave four for beads and tails: the newest bead, and
 	// a tail under each of the three groups that lost rows.
 	want := strings.Join([]string{
@@ -86,13 +86,13 @@ func TestMoved_TheHeightKeepsEffortRowsAndTheNewestBeads(t *testing.T) {
 		"  h.76 Bugs first 0/2 0/h ",
 		"    +2 more",
 		"h.71 Release 1/1 0.3/h ",
-		"[hover]",
+		"[north]",
 		"  +1 more",
 	}, "\n")
 	if got != want {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
 	}
-	if n := len(movedRows(busyBeads(), panelNow, 8, "hover")); n > 8+1 {
+	if n := len(movedRows(busyBeads(), panelNow, 8, "north")); n > 8+1 {
 		t.Fatalf("%d rows for a height of 8", n)
 	}
 }

@@ -84,7 +84,7 @@ func newTailnetRig(t *testing.T) *tailnetRig {
 func (r *tailnetRig) setTailnet(v4 net.IP) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.ifaces = []appserve.IfaceAddr{{Iface: "en0", IP: net.ParseIP("192.168.1.50"), Up: true}}
+	r.ifaces = []appserve.IfaceAddr{{Iface: "en0", IP: net.ParseIP("10.0.0.50"), Up: true}}
 	if v4 != nil {
 		r.ifaces = append(r.ifaces,
 			appserve.IfaceAddr{Iface: "utun4", IP: v4, Up: true},

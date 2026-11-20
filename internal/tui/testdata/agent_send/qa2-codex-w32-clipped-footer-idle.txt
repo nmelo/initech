@@ -1,6 +1,6 @@
 
   >_ OpenAI Codex (v0.170.0)
-     /Users/nmelo/qnf/eng1
+     /Users/owner/qnf/eng1
   permissions: YOLO mode
 
 

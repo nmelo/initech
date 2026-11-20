@@ -10,7 +10,7 @@ import (
 )
 
 // Rigs run on the workbench beside main CI (ini-c5a.7, the operator via
-// theguy): every rigs.yml job but darwin runs on the two rigs runners (label
+// the chief of staff): every rigs.yml job but darwin runs on the two rigs runners (label
 // initech-rigs, never main's initech-wb), through the guarded selector, and every
 // step runs at the lowest CPU priority (the workflow's default shell is
 // nice -n 19 bash, and no step names another shell), so main CI's jobs and the
@@ -188,7 +188,7 @@ func TestRigsWorkflow_TheDarwinJobRunsOnTheMacBehindItsGate(t *testing.T) {
 	}
 }
 
-// The rigs run bounded on the shared workbench (ini-c5a.7, theguy's
+// The rigs run bounded on the shared workbench (ini-c5a.7, the chief of staff's
 // conditions): every Go process at GOMAXPROCS=4 and go test at -p 2 for the
 // whole workflow; every job only from main; and every job samples its own
 // memory and process count from its start and reports them, with its disk

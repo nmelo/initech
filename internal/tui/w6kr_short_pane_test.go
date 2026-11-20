@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ini-w6kr: on a short pane (hover's qa2, 55x6) Claude Code 2.1.326's
+// ini-w6kr: on a short pane (north's qa2, 55x6) Claude Code 2.1.326's
 // scrolled box runs off the bottom edge, its closing rule and footer below
 // the last row, and the reader found no box. At 5 rows and fewer no row of
 // the box is drawn at all (measured live at 5, 4 and 3), so a message too
@@ -21,7 +21,7 @@ func w6Rows(t *testing.T, file string) []string {
 }
 
 // AC2: a box the bottom edge cuts off is still a box: the 6-row and 10-row
-// shapes (hover qa2's and two live captures) are read, and the belt lets the
+// shapes (north qa2's and two live captures) are read, and the belt lets the
 // Enter go.
 func TestShortPaneW6kr_ABoxCutByTheBottomEdgeIsRead(t *testing.T) {
 	for _, c := range []struct{ file, first string }{

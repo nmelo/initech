@@ -150,7 +150,7 @@ const maxZeroProgressWrites = 4
 
 // writeComplete delivers p to w in full or reports the writer finished.
 //
-// ALL-OR-DROP, NEVER A GAP (operator's hover garble, 2026-08-22): yamux
+// ALL-OR-DROP, NEVER A GAP (operator's north garble, 2026-08-22): yamux
 // Stream.Write sends in segments and returns (total, err), so a transient
 // timeout can fire with part of the chunk already on the wire. v2.11.2 kept
 // the writer and moved on to the NEXT chunk — the unsent remainder became a

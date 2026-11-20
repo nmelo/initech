@@ -36,5 +36,5 @@
 ────────────────────────────────────────
 ❯ Press up to edit queued messages
 ────────────────────────────────────────
-  Haiku 5.5 │ Zola │ 4% │ 40% ▓┃▓▓░░░…
+  Haiku 5.5 │ Solo │ 4% │ 40% ▓┃▓▓░░░…
   ⏵⏵ bypass permissions on (shift+tab

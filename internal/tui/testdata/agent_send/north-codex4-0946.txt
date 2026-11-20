@@ -3,10 +3,10 @@
   engine_running: true fixtures.
   Release run
 
-  I reran tsc --noEmit on hover-run
+  I reran tsc --noEmit on north-run
   against current main. It passed. I
   posted the SHA and verification on
-  hov-ansfp and parked. Passing main
+  nrt-ansfp and parked. Passing main
   CI
 
   Worked for 2m 37s • 2:09 AM
@@ -15,5 +15,5 @@
 › Ask Codex to do anything
 
   GPT-6.2-Astra xhigh · Context 85%
-  left · ~/Desktop/Projects/hover/…
+  left · ~/Desktop/Projects/north/…
   ← for agents               ⚠ 1 · f2

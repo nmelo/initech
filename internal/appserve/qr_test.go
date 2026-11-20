@@ -51,7 +51,7 @@ func qrModules(t *testing.T, render string) [][]bool {
 // AC4: the render is exactly rsc.io/qr's encoding of the URL, inside a full
 // quiet zone.
 func TestRenderQR_IsTheEncodingOfTheURL(t *testing.T) {
-	for _, url := range []string{qrTestURL, "x", "initech://pair?host=192.168.1.5&port=20000&token=t&fp=f"} {
+	for _, url := range []string{qrTestURL, "x", "initech://pair?host=10.0.0.5&port=20000&token=t&fp=f"} {
 		render, err := RenderQR(url)
 		if err != nil {
 			t.Fatalf("%q: %v", url, err)

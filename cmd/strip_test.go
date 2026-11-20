@@ -39,7 +39,7 @@ func TestStripCmd_ReplaceStdinAndClearSendTheList(t *testing.T) {
 		args  []string
 		want  []string
 	}{
-		"items":           {"", []string{"Release hover?", "  Register the runner?  "}, []string{"Release hover?", "Register the runner?"}},
+		"items":           {"", []string{"Release north?", "  Register the runner?  "}, []string{"Release north?", "Register the runner?"}},
 		"stdin":           {"one\n\n  \ntwo\r\n", []string{"--stdin"}, []string{"one", "two"}},
 		"stdin with none": {"\n  \n", []string{"--stdin"}, nil},
 		"clear":           {"", []string{"--clear"}, nil},

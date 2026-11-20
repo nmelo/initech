@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// ini-e4c AC4: the shapes the hover rig's waiting beads take, by shape and not
+// ini-e4c AC4: the shapes the north rig's waiting beads take, by shape and not
 // its text (this repo is public): 55 waiting there, 21 with an owner and 34
 // with no holder, many titled "Step ...", which the table leaves out. All of
 // them land in the calm waiting count and none in stuck.

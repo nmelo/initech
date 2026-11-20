@@ -261,7 +261,7 @@ type TUI struct {
 	// warned about (ini-4dzh). The warning fires when the key changes and is
 	// cleared whenever the viewer is not in the defect state, so an unchanged
 	// defect logs once, a changed one logs again, and a re-entry after
-	// recovery logs again. Transitions, not frames: the operator's hover log
+	// recovery logs again. Transitions, not frames: the operator's north log
 	// held 148,513 identical lines from the per-frame version.
 	lastEmptyViewerWarn string
 
@@ -1242,7 +1242,7 @@ func Run(cfg Config) error {
 	}
 
 	// Create panes. Launch cost must track ACTIVE agents, not fleet size
-	// (hover, 2026-08-15: 39 concurrent `claude --continue` boots in one 90ms
+	// (north, 2026-08-15: 39 concurrent `claude --continue` boots in one 90ms
 	// burst — +17GB RSS, load 3→216 for ninety seconds). Two rules, one
 	// primitive: agents whose suspension was persisted cold-park (pane, no
 	// process) and stay parked; everyone past the first batch cold-parks and

@@ -9,7 +9,7 @@ import (
 )
 
 // The load gate's wiring (ini-c5a.7): the gate guards the shared Mac
-// (192.168.1.207); ci.yml and rigs.yml run on the workbench's Linux runners and
+// (192.0.2.207); ci.yml and rigs.yml run on the workbench's Linux runners and
 // never wait at it, except rigs.yml's darwin job, which runs on the Mac.
 // app-tests.yml has one job, which waits right after checkout with simulators
 // on. The gate's own

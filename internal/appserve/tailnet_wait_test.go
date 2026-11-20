@@ -60,7 +60,7 @@ func (r *tailnetReader) give() {
 	r.addrs = []IfaceAddr{
 		{Iface: "utun4", IP: net.ParseIP("100.101.102.103"), Up: true},
 		{Iface: "utun4", IP: net.ParseIP("fd7a:115c:a1e0::1"), Up: true},
-		{Iface: "en0", IP: net.ParseIP("192.168.1.50"), Up: true},
+		{Iface: "en0", IP: net.ParseIP("10.0.0.50"), Up: true},
 	}
 }
 

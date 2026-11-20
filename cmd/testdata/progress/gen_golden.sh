@@ -1,9 +1,9 @@
 #!/bin/sh
-# Regenerates golden.txt: theguy's progress.py run on this fixture, with a
+# Regenerates golden.txt: cosrig's progress.py run on this fixture, with a
 # fake bd and gh answering from these files and the clock fixed at
 # 2026-10-31T22:00:00Z, prefix fx-, six hours. Not run by the tests; run by
 # hand when the fixture or the script changes:
-#   sh cmd/testdata/progress/gen_golden.sh ~/Desktop/Projects/theguy/skills/progress-tracking/scripts/progress.py
+#   sh cmd/testdata/progress/gen_golden.sh ~/Desktop/Projects/cosrig/skills/progress-tracking/scripts/progress.py
 set -eu
 script=${1:?path to progress.py}
 here=$(cd "$(dirname "$0")" && pwd)

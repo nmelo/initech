@@ -581,10 +581,10 @@ roles:
   - eng1
 remotes:
   workbench:
-    addr: "192.168.1.100:7391"
+    addr: "192.0.2.100:7391"
     token: wb-token
   spark1:
-    addr: "192.168.1.101:7391"
+    addr: "192.0.2.101:7391"
 `
 	path := filepath.Join(dir, "initech.yaml")
 	os.WriteFile(path, []byte(yaml), 0644)
@@ -597,14 +597,14 @@ remotes:
 		t.Fatalf("Remotes count = %d, want 2", len(p.Remotes))
 	}
 	wb := p.Remotes["workbench"]
-	if wb.Addr != "192.168.1.100:7391" {
+	if wb.Addr != "192.0.2.100:7391" {
 		t.Errorf("workbench addr = %q", wb.Addr)
 	}
 	if wb.Token != "wb-token" {
 		t.Errorf("workbench token = %q", wb.Token)
 	}
 	sp := p.Remotes["spark1"]
-	if sp.Addr != "192.168.1.101:7391" {
+	if sp.Addr != "192.0.2.101:7391" {
 		t.Errorf("spark1 addr = %q", sp.Addr)
 	}
 	if sp.Token != "" {
@@ -875,7 +875,7 @@ func TestValidate_ListenExplicitHostUnchanged(t *testing.T) {
 	}{
 		{"0.0.0.0:7391", "0.0.0.0:7391"},
 		{"127.0.0.1:7391", "127.0.0.1:7391"},
-		{"192.168.1.100:7391", "192.168.1.100:7391"},
+		{"192.0.2.100:7391", "192.0.2.100:7391"},
 	}
 	for _, tt := range tests {
 		p := &Project{

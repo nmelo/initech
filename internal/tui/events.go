@@ -163,7 +163,7 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	// ended not delivered is told, once, here on the main goroutine. Never
 	// into the pane that failed: initech's own line to a stuck super tells
 	// "initech", which tellSender routes to super, into the same stuck box,
-	// and that line fails in turn (hover, 10:27: three in five seconds).
+	// and that line fails in turn (north, 10:27: three in five seconds).
 	if ev.From != "" && ev.ToSender != "" {
 		if t.tellSenderPane(ev.From) == ev.Pane {
 			LogInfo("inject", "not-delivered notice not sent: it would go to the pane that failed", "pane", ev.Pane, "from", ev.From)

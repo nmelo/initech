@@ -2,7 +2,7 @@
       ▄▀▀▄        Antigravity CLI 1.5.11
      ▀▀▀▀▀▀       aaaaaa@example.org (Google AI Ultra)
     ▀▀▀▀▀▀▀▀      Claude Opus 5.5 (High)
-   ▄▀▀    ▀▀▄     ~/Desktop/Projects/hover/agy2
+   ▄▀▀    ▀▀▄     ~/Desktop/Projects/north/agy2
   ▄▀▀      ▀▀▄
 
 ────────────────────────────────────────────────────────────
@@ -10,7 +10,7 @@
 
 ○ Thought for 5.2s (I'm weighing my AGENTS.md scope, which limits me to routine beads and excludes anything touching auth, billing, tenancy, or the deletion path, against the fact that super has explicitl...)
 ● Explored 1 file (TASK.md)
-● Ran (cd /Users/nmelo/Desktop/Projects/hover/agy2 && ls tmp/vepjr/ && bd show hov-vepjr 2>&1 | head -400) (ctrl+o to expand)
+● Ran (cd /Users/owner/Desktop/Projects/north/agy2 && ls tmp/vepjr/ && bd show nrt-vepjr 2>&1 | head -400) (ctrl+o to expand)
 ⣯  Running command...
 └ Tip: Use /voice (or press f5) to record your prompt with your microphone.
 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────

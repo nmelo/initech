@@ -164,13 +164,13 @@ func TestReadOrCreateTokenStatus_SecondRunReportsExisting(t *testing.T) {
 
 func TestPrintConnectionSnippet_ContainsExpectedFields(t *testing.T) {
 	var buf strings.Builder
-	printConnectionSnippet(&buf, "workbench", "192.168.1.50", 9090, "TOK-abc")
+	printConnectionSnippet(&buf, "workbench", "10.0.0.50", 9090, "TOK-abc")
 	out := buf.String()
 
 	for _, want := range []string{
 		"remotes:",
 		"workbench:",
-		"addr: 192.168.1.50:9090",
+		"addr: 10.0.0.50:9090",
 		"token: TOK-abc",
 		"roles: []",
 	} {

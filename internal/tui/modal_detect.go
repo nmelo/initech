@@ -323,7 +323,7 @@ const composerRuleMinRunes = 40
 // isScrolledBoxRule reports the top rule of an input box whose text is taller
 // than the box (Claude Code 2.1.326): box dashes around "↑ N more",
 // "─── ↑ 10 more ──────", and on a named session the name after it in the
-// labelled-rule shape, "─── ↑ 18 more ─── Hover super ─" (ini-hkxn: hover's
+// labelled-rule shape, "─── ↑ 18 more ─── North super ─" (ini-hkxn: north's
 // 31-column super). The box under it shows the end of the text and no ❯
 // prompt. 2.1.325 drew a plain rule and put ❯ on the first row it showed.
 func isScrolledBoxRule(row string) bool {

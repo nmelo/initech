@@ -2,7 +2,7 @@ Investigation ini-g8n9 reproduces an all-hidden viewer that owns its agents,
 has their pane objects, renders nothing, and supplies no explanation. Production
 code is unchanged from `694985fad0ab3cf7d97f6ecc06c6a52adce3c325`.
 
-The files in this directory were copied from hover's `.initech` directory on
+The files in this directory were copied from north's `.initech` directory on
 2026-09-12. `snapshot.json` records byte counts, modification times and SHA-256
 hashes. No operator files or processes were changed. These three YAML files
 contain layout/assignment/fleet preferences only.

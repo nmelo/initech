@@ -262,7 +262,7 @@ func TestBindAddr_TailnetOnlyNeverAllOrLoopback(t *testing.T) {
 	addrs := []IfaceAddr{
 		{"lo0", net.ParseIP("127.0.0.1"), true},
 		{"lo0", net.ParseIP("::1"), true},
-		{"en0", net.ParseIP("192.168.1.50"), true},
+		{"en0", net.ParseIP("10.0.0.50"), true},
 		{"en1", net.ParseIP("10.0.0.9"), true},
 		{"utun4", net.ParseIP("fd7a:115c:a1e0::1"), true},
 		{"utun4", net.ParseIP("100.101.1.2"), true},
@@ -288,8 +288,8 @@ func TestBindAddr_TailnetOnlyNeverAllOrLoopback(t *testing.T) {
 	if ip, err := BindAddr(ListenTailnet, append(cgnat, addrs...)); err != nil || ip.String() != "100.101.1.2" {
 		t.Errorf("carrier NAT on en0 beside Tailscale on utun4: %v %v, want utun4's 100.101.1.2", ip, err)
 	}
-	if ip, err := BindAddr(ListenLocalNetwork, addrs); err != nil || ip.String() != "192.168.1.50" {
-		t.Errorf("local-network: %v %v, want en0's 192.168.1.50", ip, err)
+	if ip, err := BindAddr(ListenLocalNetwork, addrs); err != nil || ip.String() != "10.0.0.50" {
+		t.Errorf("local-network: %v %v, want en0's 10.0.0.50", ip, err)
 	}
 	if _, err := BindAddr(ListenLocalNetwork, addrs[:2]); err == nil {
 		t.Error("local-network with loopback only: no error")

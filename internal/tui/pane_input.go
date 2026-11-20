@@ -17,7 +17,7 @@ import (
 // on the main goroutine, every send (holding sendMu, which the main goroutine's
 // suspend then waited on), and the emulator's own replies to terminal queries,
 // which readLoop writes from inside emu.Write holding renderMu. Any one of them
-// froze the whole rig: hover's main loop sat 7 minutes on one such write.
+// froze the whole rig: north's main loop sat 7 minutes on one such write.
 //
 // So exactly one place writes to a child: the drain below, which owns
 // ptmx.Write. Everything else queues, and queueing never blocks. responseLoop

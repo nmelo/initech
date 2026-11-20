@@ -71,7 +71,7 @@ func parseFooter(rows []string, width int) Footer {
 // columns, ini-67k7). lowestComposerFrame keeps its floor for the send path.
 //
 // The TOP rule may end in a label: Claude Code draws the session name there
-// after /rename ("──── pa ─"). MEASURED on 2.1.310 (theguy's pa pane, and
+// after /rename ("──── pa ─"). MEASURED on 2.1.310 (the chief of staff's pa pane, and
 // Haiku panes renamed pa and accountant at 94 and 40 columns): one short
 // label, then " ─", at the rule's end; the bottom rule is never labelled.
 // Without this every field of a renamed agent read null (ini-2tec).

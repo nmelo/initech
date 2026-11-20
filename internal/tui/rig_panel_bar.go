@@ -65,7 +65,7 @@ func barRightItems(f *rignumbers.Fleet, quota quotaSource, cores int, bar tcell.
 		return nil
 	}
 	// Free memory, the number the start refusal reads, against its floor
-	// (theguy): "free 11 GB · floor 8".
+	// (the chief of staff): "free 11 GB · floor 8".
 	free := "?"
 	if f.FreeGB != nil {
 		free = strings.TrimSuffix(fmt.Sprintf("%.1f", *f.FreeGB), ".0")

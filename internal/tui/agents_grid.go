@@ -1541,7 +1541,7 @@ func (t *TUI) renderAgentsGrid() {
 	// re-derive it, which is what makes a drawn/computed divergence
 	// unrepresentable rather than merely absent (ini-9ka.5).
 	// A monitor whose EVERY agent is hidden says so on its own header row
-	// (ini-68qv). That state produced a blank monitor on hover: the panel
+	// (ini-68qv). That state produced a blank monitor on north: the panel
 	// listed the whole eng group under monitor 2, monitor 2 rendered nothing,
 	// and nothing on the panel said why. Drawn on the row the walk already
 	// reserved for the header, so geometry is untouched (ini-9ka.5). Remote
@@ -1698,7 +1698,7 @@ func (t *TUI) renderAgentsGrid() {
 
 		// Hidden is [h], the overlay's glyph (render.go ' [h]'), in the slot
 		// the operator already reads as the visibility axis (ini-68qv). The
-		// operator's confusion on hover was exactly this: an agent listed
+		// operator's confusion on north was exactly this: an agent listed
 		// under monitor 2 with an empty box read as "on monitor 2", and the
 		// monitor rendered nothing. Same 3-character box, so the cell budget
 		// and the golden are untouched; the name keeps its gray italic, so a

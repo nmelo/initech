@@ -30,11 +30,11 @@ func TestStatedWait_ThePrefix(t *testing.T) {
 	cases := map[string]bool{
 		"WAIT: ini-abc":   true,
 		"  WAIT: ini-abc": true,
-		"WAIT (operator via theguy): shape moves": true,
+		"WAIT (operator via cosrig): shape moves": true,
 		"WAIT(super): x":                    true,
 		"WAIT OVER: ini-abc landed":         false,
 		"WAIT added: also waits on ini-abc": false,
-		"WAITING (super, theguy hold): x":   false,
+		"WAITING (super, cosrig hold): x":   false,
 		"Wait restated: ini-abc":            false,
 		"wait: ini-abc":                     false, // lower case is prose
 		"waits on ini-abc":                  false,
@@ -71,9 +71,9 @@ func TestStatedWait_TheTarget(t *testing.T) {
 		{"WAIT: date:2026-11-09 Monday", WaitTarget{WaitOnDate, "2026-11-09"}},
 		{"WAIT: 2026-11-09 Monday", WaitTarget{}},            // a bare date is not typed
 		{"WAIT: added coverage deadbeef cafe", WaitTarget{}}, // hex words are words
-		{"WAIT (operator via theguy): theguy message is due", WaitTarget{}},
+		{"WAIT (operator via cosrig): cosrig message is due", WaitTarget{}},
 		{"WAIT: v2.61.0 then ini-abc", WaitTarget{WaitOnTag, "v2.61.0"}},
-		{"WAIT: hov-abc is not this rig", WaitTarget{}},
+		{"WAIT: nrt-abc is not this rig", WaitTarget{}},
 	}
 	for _, c := range cases {
 		got, _, ok := StatedWait("ini-me", []Comment{wc(0, c.text)})
@@ -96,7 +96,7 @@ func judgeAt(b Bead, status map[string]string, closed map[string]time.Time, now 
 // is never over.
 func TestWaits_TheFed0Shape(t *testing.T) {
 	b := stated(waitingBead("ini-fed0", "", edge("ini-nxyf", 0)),
-		wc(3, "WAIT (operator via theguy): shape is changing to a five-box rig board"))
+		wc(3, "WAIT (operator via cosrig): shape is changing to a five-box rig board"))
 	w := judgeAt(b, map[string]string{"ini-nxyf": "closed"}, nil, w0.Add(time.Hour))
 	if w.Over {
 		t.Fatalf("the fed0 shape read over: %+v", w)

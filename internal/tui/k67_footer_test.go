@@ -42,7 +42,7 @@ func TestFooter_StatusLineByShape(t *testing.T) {
 		line string
 		want Footer
 	}{
-		{"  ⎇ main │ Opus 5.5 │ Camila │ 10% │ 29% ▓▓▓ → 04:00 PM │ 8%", Footer{ContextPercent: l6omInt(10), Model: l6omStr("Opus 5.5"), User: l6omStr("Camila")}},
+		{"  ⎇ main │ Opus 5.5 │ Fourth │ 10% │ 29% ▓▓▓ → 04:00 PM │ 8%", Footer{ContextPercent: l6omInt(10), Model: l6omStr("Opus 5.5"), User: l6omStr("Fourth")}},
 		{"  ⎇ feature/x │ ✓ │ Claude Sonnet 4.6 │ Work │ 60% │ 1%", Footer{ContextPercent: l6omInt(60), Model: l6omStr("Claude Sonnet 4.6"), User: l6omStr("Work")}},
 		// No model-shaped segment: the model is not read; the name still is.
 		{"  ⎇ main │ Work │ 12% │ 1%", Footer{ContextPercent: l6omInt(12), User: l6omStr("Work")}},

@@ -57,15 +57,15 @@ func TestAgentSendCapturedHolds(t *testing.T) {
 		{"generic", "qa3-agy-working", "running task", 0},
 		{"generic", "qa3-agy-native-queued", "running task", 1},
 		{"generic", "qa3-agy-native-with-draft", "running task", 1},
-		{"generic", "hover-agy2-idle-quota-1016", "running task", 0},
+		{"generic", "north-agy2-idle-quota-1016", "running task", 0},
 		{"codex", "local-codex-update-menu", "dialog", 0},
 		{"codex", "qa3-codex-shortcuts", "dialog", 0},
 		{"codex", "local-codex-0170-approval", "dialog", 0},
 		{"generic", "local-agy-1511-trust", "dialog", 0},
 		{"generic", "local-agy-1511-model-menu", "dialog", 0},
-		{"generic", "hover-agy2-0946", "", 0},
+		{"generic", "north-agy2-0946", "", 0},
 		{"codex", "", "", 0},
-		{"codex", "hover-agy2-0946", "", 0},
+		{"codex", "north-agy2-0946", "", 0},
 	} {
 		t.Run(tc.family+tc.file, func(t *testing.T) {
 			sendBubble(t, func(t *testing.T) {
@@ -182,17 +182,17 @@ func TestAgentSendWakeNeedsProof(t *testing.T) {
 
 func TestAgentSendCapturedStates(t *testing.T) {
 	expected := map[string][]string{
-		"idle": {"hover-codex1-0946", "hover-codex2-0946", "hover-codex3-0946", "hover-codex4-0946", "local-codex-idle", "local-codex-0170-idle", "local-codex-0170-landed", "local-codex-0170-branch-idle", "local-codex-0170-branch-landed", "local-agy-1511-idle", "local-agy-1511-landed", "hover-agy3-idle-quota-1016", "hover-agy4-idle-quota-1016",
+		"idle": {"north-codex1-0946", "north-codex2-0946", "north-codex3-0946", "north-codex4-0946", "local-codex-idle", "local-codex-0170-idle", "local-codex-0170-landed", "local-codex-0170-branch-idle", "local-codex-0170-branch-landed", "local-agy-1511-idle", "local-agy-1511-landed", "north-agy3-idle-quota-1016", "north-agy4-idle-quota-1016",
 			// ini-bvjy: idle with a background terminal still running, and the
 			// negative twin, an old Working row in the conversation above an
 			// ordinary row (built from that capture).
 			"local-codex-0170-bgterm-idle", "local-codex-0170-working-in-transcript",
 			// ini-1etm: narrow tiles. agy cuts its hint with "...", Codex
 			// wraps its footer (and at 26 columns cuts its hint bare).
-			"local-codex-0170-w40-idle", "local-codex-0170-w33-idle", "local-codex-0170-w32-idle", "local-codex-0170-w26-idle", "hover-codex1-w32-idle",
+			"local-codex-0170-w40-idle", "local-codex-0170-w33-idle", "local-codex-0170-w32-idle", "local-codex-0170-w26-idle", "north-codex1-w32-idle",
 			"local-agy-1512-w100-idle", "local-agy-1512-w40-idle", "local-agy-1512-w33-idle", "local-agy-1512-w32-idle", "local-agy-1512-w26-idle", "local-agy-1512-w33-menu-cleaned",
 			"qa2-codex-w32-clipped-footer-idle"},
-		"busy": {"local-codex-next-tool-short-working", "local-codex-next-tool-short-draft", "local-codex-next-tool-short-shelf", "local-codex-next-tool-long-working", "local-codex-next-tool-long-draft", "local-codex-next-tool-long-shelf", "local-codex-weekly-warning", "local-agy-queued-task-shelf", "local-agy-background-task", "qa2-agy-ten", "qa2-agy-eleven", "qa2-codex-qca-m12", "local-codex-before-tool", "local-codex-after-tool", "local-r6-agy-busy", "local-r6-agy-draft", "local-r6-agy-queued", "qa3-agy-working", "qa3-agy-native-queued", "qa3-agy-native-with-draft", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa3-codex-working-plain", "qa3-codex-native-two", "qa3-codex-working-backticks", "hover-agy1-0946", "hover-agy2-busy-0952", "hover-agy3-busy-0952", "hover-agy4-busy-0952", "hover-agy2-idle-quota-1016", "local-agy-1511-busy", "local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two",
+		"busy": {"local-codex-next-tool-short-working", "local-codex-next-tool-short-draft", "local-codex-next-tool-short-shelf", "local-codex-next-tool-long-working", "local-codex-next-tool-long-draft", "local-codex-next-tool-long-shelf", "local-codex-weekly-warning", "local-agy-queued-task-shelf", "local-agy-background-task", "qa2-agy-ten", "qa2-agy-eleven", "qa2-codex-qca-m12", "local-codex-before-tool", "local-codex-after-tool", "local-r6-agy-busy", "local-r6-agy-draft", "local-r6-agy-queued", "qa3-agy-working", "qa3-agy-native-queued", "qa3-agy-native-with-draft", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa3-codex-working-plain", "qa3-codex-native-two", "qa3-codex-working-backticks", "north-agy1-0946", "north-agy2-busy-0952", "north-agy3-busy-0952", "north-agy4-busy-0952", "north-agy2-idle-quota-1016", "local-agy-1511-busy", "local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two",
 			// ini-bvjy: working with a background terminal, with Codex's "⚠
 			// weekly limit: only 5% left" notice between the Working row and
 			// the composer.
@@ -206,11 +206,11 @@ func TestAgentSendCapturedStates(t *testing.T) {
 			"local-agy-1512-w40-draft", "local-agy-1512-w33-draft", "local-agy-1512-w32-draft",
 			"local-agy-1512-w100-menu-after-esc", "local-agy-1512-w33-menu-after-esc"},
 		"dialog": {"qa3-codex-shortcuts", "local-codex-update-menu", "local-codex-0170-folder-dialog", "local-codex-0170-approval", "local-agy-1511-model-menu", "local-agy-1511-trust",
-			// ini-1etm: agy's slash menu, wide, at 33 columns, and hover's.
-			"local-agy-1512-w100-menu-clear", "local-agy-1512-w33-menu-clear", "hover-agy1-w33-slash-menu"},
-		// ini-1etm: hover's agy1 after interrupt --hard ("press ctrl+c again
+			// ini-1etm: agy's slash menu, wide, at 33 columns, and north's.
+			"local-agy-1512-w100-menu-clear", "local-agy-1512-w33-menu-clear", "north-agy1-w33-slash-menu"},
+		// ini-1etm: north's agy1 after interrupt --hard ("press ctrl+c again
 		// to exit"), a state pm ruled not read; the bound ends what it holds.
-		"unreadable": {"hover-agy2-0946", "hover-agy3-0946", "hover-agy4-0946", "hover-agy1-w33-ctrlc"},
+		"unreadable": {"north-agy2-0946", "north-agy3-0946", "north-agy4-0946", "north-agy1-w33-ctrlc"},
 	}
 	files, err := filepath.Glob("testdata/agent_send/*.txt")
 	if err != nil {

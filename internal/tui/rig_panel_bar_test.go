@@ -63,7 +63,7 @@ func TestBarLeftItems_TheRedPartsAreRed(t *testing.T) {
 	}
 }
 
-// TestBarRight_FreeMemorySaysItIsFreeAgainstTheFloor (theguy, via super):
+// TestBarRight_FreeMemorySaysItIsFreeAgainstTheFloor (the chief of staff, via super):
 // the number the start refusal reads, as "free 11 GB · floor 8".
 func TestBarRight_FreeMemorySaysItIsFreeAgainstTheFloor(t *testing.T) {
 	free, load, awake := 11.0, 1.0, 1

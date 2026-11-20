@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 )
 
-// ini-psjt: hover's main loop sat 30+ hours on an emulator RLock. The dump's
+// ini-psjt: north's main loop sat 30+ hours on an emulator RLock. The dump's
 // cycle, all in one pane: an IPC send's sendSubmitKey held the emulator WRITE
 // lock inside SafeEmulator.SendKey while blocked writing the key into the
 // emulator's input pipe; responseLoop, which drains that pipe, was stuck in
@@ -55,7 +55,7 @@ func completesWithin(d time.Duration, fn func()) bool {
 
 // LAYER (a): a submit key blocked on an undrained pipe must not hold the
 // emulator lock while it waits. Today it does, so a plain reader is stuck
-// behind it for as long as the pipe stays full -- in hover, 30 hours.
+// behind it for as long as the pipe stays full -- in north, 30 hours.
 func TestEmulator_SendKeyDoesNotHoldTheLockAcrossTheBlockingPipeWrite(t *testing.T) {
 	emu := undrainedEmu(t)
 	go sendSubmitKey(emu, "") // blocks in the pipe write; the question is what it holds meanwhile
@@ -89,7 +89,7 @@ func TestModalMaintenance_DoesNotBlockTheMainLoopOnAHeldEmulator(t *testing.T) {
 		tui.modalMaintenance(time.Now())
 	}) {
 		t.Fatal("main loop BLOCKED: modalMaintenance waited on a pane's emulator lock; " +
-			"one wedged pane freezes the whole window (hover, 11,779 watchdog dumps)")
+			"one wedged pane freezes the whole window (north, 11,779 watchdog dumps)")
 	}
 }
 

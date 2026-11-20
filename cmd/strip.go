@@ -24,7 +24,7 @@ its bottom bar: one line per item, each starting with ▶, in the order given.
 A long item wraps under its text and is never cut. The command replaces the
 whole list; the strip belongs to the pane of the agent that runs it.
 
-  initech strip 'Release hover? Recommended yes.' 'Register the CI runner?'
+  initech strip 'Release north? Recommended yes.' 'Register the CI runner?'
   printf '%s\n' "$item1" "$item2" | initech strip --stdin
   initech strip --clear
 

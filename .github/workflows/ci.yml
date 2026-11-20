@@ -39,7 +39,7 @@ env:
 # the Mac goes away: timeout-minutes counts only once a job STARTS, so a job
 # queued for an offline self-hosted runner waits (up to 24h) instead of failing.
 #
-# CONCURRENCY (ini-c5a.7, the operator via theguy): main pushes share one
+# CONCURRENCY (ini-c5a.7, the operator via the chief of staff): main pushes share one
 # group with cancel-in-progress off, so a run that has started always finishes,
 # and GitHub keeps at most one more, the newest, pending: a burst of pushes
 # collapses to the newest sha instead of queueing one run per push, and an
@@ -74,13 +74,13 @@ concurrency:
 #      variant, or a short-only life, that no job here would run. make check
 #      still runs the -short suite locally.
 #
-# ON THE WORKBENCH (ini-c5a.7, the operator via theguy): every job runs on
-# the Linux runners registered as initech-ci on 192.168.1.100 (label
+# ON THE WORKBENCH (ini-c5a.7, the operator via the chief of staff): every job runs on
+# the Linux runners registered as initech-ci on 192.0.2.100 (label
 # initech-wb, eight runners, in a sandbox at nice 10: no sudo, no Docker, no
 # LAN); a pull request falls back to GitHub-hosted ubuntu-latest, so a fork's
 # code never reaches that machine. Tests that need macOS run in rigs.yml's
 # darwin job, off this path. Nothing here runs on the shared Mac
-# (192.168.1.207), so no job waits at its load gate. Seven jobs start
+# (192.0.2.207), so no job waits at its load gate. Seven jobs start
 # together (build-and-test, full-suite-1..6) on seven of the eight runners,
 # so none waits for a second wave, and the census follows. The wall is the
 # longest of build-and-test and the shards, plus full-suite-census. Six

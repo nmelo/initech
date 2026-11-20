@@ -35,7 +35,7 @@ func TestPins_StoredOnTheMacInOrderBehindTheToken(t *testing.T) {
 	if code, body := get(t, h, "/v1/pins", auth); code != 200 || strings.TrimSpace(body) != "[]" {
 		t.Fatalf("no pins stored: %d %s, want []", code, body)
 	}
-	list := `[{"rig":"theguy","pane":"super","name":"theguy","order":2},{"rig":"initech","pane":"eng9","name":"eng9 on the Rust twin","order":1}]`
+	list := `[{"rig":"cosrig","pane":"super","name":"cosrig","order":2},{"rig":"initech","pane":"eng9","name":"eng9 on the Rust twin","order":1}]`
 	if code, body := putPins(t, h, auth, list); code != 200 {
 		t.Fatalf("PUT: %d %s", code, body)
 	}
@@ -44,8 +44,8 @@ func TestPins_StoredOnTheMacInOrderBehindTheToken(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &pins); err != nil {
 		t.Fatal(err)
 	}
-	if len(pins) != 2 || pins[0].Pane != "eng9" || pins[0].Name != "eng9 on the Rust twin" || pins[1].Rig != "theguy" {
-		t.Errorf("pins = %+v, want eng9 then theguy's super", pins)
+	if len(pins) != 2 || pins[0].Pane != "eng9" || pins[0].Name != "eng9 on the Rust twin" || pins[1].Rig != "cosrig" {
+		t.Errorf("pins = %+v, want eng9 then cosrig's super", pins)
 	}
 	if st, err := os.Stat(filepath.Join(dir, PinsFile)); err != nil || st.Mode().Perm() != 0o600 {
 		t.Errorf("pins file mode: %v %v", st, err)

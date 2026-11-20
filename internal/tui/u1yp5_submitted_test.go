@@ -26,7 +26,7 @@ var u1Captures = []u1Capture{
 		"[from pm] ◆ ini-61by landed at be5dea4: a new", 52, 36},
 	{"inject_unknown_super.txt",
 		"[from initech] ☾ ini-l1r waits on ini-r0q.18: ini-r0q.18 closed; move it on",
-		"[from theguy] B. v2.59.0 isdnesday 10:07 PMcountingerulee", 78, 51},
+		"[from cosrig] B. v2.59.0 isdnesday 10:07 PMcountingerulee", 78, 51},
 }
 
 func u1Rows(t *testing.T, file string) []string {
