@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"regexp"
@@ -97,8 +98,16 @@ type block struct {
 	Content   json.RawMessage `json:"content"`
 }
 
+// senderMax bounds the sender in "[from <sender>]". The rigs' senders run
+// from one word ("thegal") to whole phrases ("super of nayutal", "pa,
+// schedule s13", one seen at 139 characters that carried its reply
+// instructions); past this, text that starts "[from " is the operator's own.
+const senderMax = 160
+
 var (
-	fromPrefix     = regexp.MustCompile(`^\[from ([A-Za-z0-9_.:-]+)\]\s*`)
+	// fromPrefix is another agent's message: "[from <sender>]" at the start,
+	// the sender any text up to the closing bracket on the first line.
+	fromPrefix     = regexp.MustCompile(fmt.Sprintf(`^\[from ([^\]\n]{1,%d})\]\s*`, senderMax))
 	systemReminder = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
 	// pastedTag is the wrapper Claude Code records around pasted text, which
 	// is how initech send delivers: the words inside are the message.
@@ -293,7 +302,8 @@ func (r *renderer) queued(rec record) {
 }
 
 // typed adds what someone typed into the pane: another agent's message when
-// it starts "[from <agent>]", else the operator's. System reminders are
+// it starts "[from <sender>]" (fromPrefix, a non-empty sender of at most
+// senderMax characters on the first line), else the operator's. System reminders are
 // stripped; harness text and nothing left are no message.
 func (r *renderer) typed(id string, at time.Time, raw string) {
 	text := strings.TrimSpace(pastedTag.ReplaceAllString(systemReminder.ReplaceAllString(raw, ""), ""))
@@ -301,8 +311,8 @@ func (r *renderer) typed(id string, at time.Time, raw string) {
 		return
 	}
 	m := Message{ID: id, At: at, Kind: KindNelson, Text: text}
-	if sm := fromPrefix.FindStringSubmatch(text); sm != nil {
-		m.Kind, m.From, m.Text = KindMessage, sm[1], strings.TrimSpace(text[len(sm[0]):])
+	if sm := fromPrefix.FindStringSubmatch(text); sm != nil && strings.TrimSpace(sm[1]) != "" {
+		m.Kind, m.From, m.Text = KindMessage, strings.TrimSpace(sm[1]), strings.TrimSpace(text[len(sm[0]):])
 	}
 	r.msgs = append(r.msgs, m)
 }
