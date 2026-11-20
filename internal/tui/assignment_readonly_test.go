@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,21 @@ func corruptStore(t *testing.T) (root, hash string) {
 	return root, hashFile(t, root)
 }
 
+// pinInPlace makes window 1 unable to set the corrupt store aside (a
+// read-only .initech), the case in which it still keeps the read-only
+// fallback (ini-5xcb). Restore with the returned func before writing a repair.
+func pinInPlace(t *testing.T, root string) func() {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("folder permissions are not enforced here")
+	}
+	dir := filepath.Join(root, ".initech")
+	_ = os.Chmod(dir, 0o500)
+	undo := func() { _ = os.Chmod(dir, 0o700) }
+	t.Cleanup(undo)
+	return undo
+}
+
 func hashFile(t *testing.T, root string) string {
 	t.Helper()
 	b, err := os.ReadFile(assignmentPath(root))
@@ -55,6 +71,7 @@ func hashFile(t *testing.T, root string) string {
 // almost nothing. Only the bytes distinguish preserved from replaced.
 func TestFallbackStore_MoveGroupLeavesTheCorruptFileByteIdentical(t *testing.T) {
 	root, before := corruptStore(t)
+	pinInPlace(t, root)
 
 	tui := &TUI{projectRoot: root}
 	a := tui.agentsAssignment()
@@ -84,6 +101,7 @@ func TestFallbackStore_MoveGroupLeavesTheCorruptFileByteIdentical(t *testing.T) 
 // both must be refused.
 func TestFallbackStore_RefusesEveryWindowIdentity(t *testing.T) {
 	root, before := corruptStore(t)
+	pinInPlace(t, root)
 	a := (&TUI{projectRoot: root}).agentsAssignment()
 
 	w, ok := a.Writer()
@@ -105,6 +123,7 @@ func TestFallbackStore_RefusesEveryWindowIdentity(t *testing.T) {
 // at all while the store is unreadable.
 func TestFallbackStore_ReadsStillWorkAndReportWindowOne(t *testing.T) {
 	root, _ := corruptStore(t)
+	pinInPlace(t, root)
 	a := (&TUI{projectRoot: root}).agentsAssignment()
 
 	if got := a.WindowOfGroup("eng"); got != WindowOne {
@@ -127,6 +146,7 @@ func TestFallbackStore_ReadsStillWorkAndReportWindowOne(t *testing.T) {
 // find. The refusal must come from the readOnly flag, not from a blank root.
 func TestFallbackStore_KeepsItsRootRatherThanBlankingIt(t *testing.T) {
 	root, _ := corruptStore(t)
+	pinInPlace(t, root)
 	a := (&TUI{projectRoot: root}).agentsAssignment()
 
 	if a.root != root {
@@ -167,11 +187,13 @@ func TestHealthyStore_StillPersistsNormally(t *testing.T) {
 // wrong and they would need a restart nobody told them about.
 func TestOpenAgentsModal_DropsFallbackSoRepairTakesEffect(t *testing.T) {
 	root, _ := corruptStore(t)
+	unpin := pinInPlace(t, root)
 	tui := &TUI{projectRoot: root}
 
 	if a := tui.agentsAssignment(); !a.readOnly {
 		t.Fatal("precondition: corrupt store should yield a read-only fallback")
 	}
+	unpin()
 
 	// Operator repairs the file.
 	good := "group_window:\n  eng: window-2\n"
@@ -215,6 +237,7 @@ func TestOpenAgentsModal_KeepsAHealthyCachedStore(t *testing.T) {
 // believe the move applied.
 func TestFallbackStore_RefusedMoveRaisesAVisibleNotice(t *testing.T) {
 	root, before := corruptStore(t)
+	pinInPlace(t, root)
 
 	pane := testPane("eng1")
 	tui := &TUI{
@@ -261,6 +284,7 @@ func TestFallbackStore_RefusedMoveRaisesAVisibleNotice(t *testing.T) {
 // notice for something the operator never asked for.
 func TestFallbackStore_PruneDoesNotAttemptAWrite(t *testing.T) {
 	root, before := corruptStore(t)
+	pinInPlace(t, root)
 	tui := &TUI{projectRoot: root, agentEvents: make(chan AgentEvent, 4)}
 	a := tui.agentsAssignment()
 

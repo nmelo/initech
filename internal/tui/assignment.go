@@ -190,7 +190,7 @@ func LoadAssignment(projectRoot, windowID string) (*WindowAssignment, error) {
 
 	var pa persistentAssignment
 	if err := yaml.Unmarshal(data, &pa); err != nil {
-		return nil, fmt.Errorf("parse assignment store: %w", err)
+		return nil, fmt.Errorf("parse assignment store: %w: %v", errStateUnparseable, err)
 	}
 	for group, window := range pa.GroupWindow {
 		// Heal stores written by the pre-xq4r generator: "window2" named a
@@ -238,14 +238,14 @@ func (a *WindowAssignment) save() error {
 		return fmt.Errorf("create .initech/: %w", err)
 	}
 
+	ticket := takeSaveTicket(assignmentPath(a.root)) // with the content, below
 	pa := persistentAssignment{GroupWindow: a.groupWindow}
 	data, err := yaml.Marshal(&pa)
 	if err != nil {
 		return fmt.Errorf("marshal assignment: %w", err)
 	}
 
-	final := assignmentPath(a.root)
-	if err := writeFileAtomic(final, data, 0600); err != nil {
+	if err := writeFileAtomic(ticket, data, 0600); err != nil {
 		return fmt.Errorf("write assignment: %w", err)
 	}
 	return nil

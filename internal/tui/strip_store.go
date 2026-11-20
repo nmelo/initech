@@ -75,6 +75,9 @@ type stripBook struct {
 	mu    sync.Mutex
 	path  string
 	lists map[string][]string
+	// broken is why the book refuses changes: its file did not parse and
+	// could not be set aside, so a write would overwrite it in place.
+	broken error
 	// onChange, when set, is told the agent whose list changed (viewers).
 	onChange func(agent string, items []string)
 }
@@ -115,10 +118,12 @@ func loadStripBook(path string, now time.Time) *stripBook {
 	}
 	lists, err := parseStripFile(data)
 	if err != nil {
-		aside := path + ".bad-" + now.UTC().Format("20060102T150405Z")
-		rerr := os.Rename(path, aside)
-		LogWarn("strip", "strip file set aside; no pane shows a strip until one is set again",
-			"file", path, "aside", aside, "err", err, "rename_err", rerr)
+		// The one rule for a damaged state file (setAsideStateFile). Only the
+		// process that owns this file loads it: window 1 and serve each have
+		// their own.
+		if _, ok := setAsideStateFileAt("strip", path, err, now); !ok {
+			b.broken = fmt.Errorf("%s does not parse and could not be set aside; fix or remove it", filepath.Base(path))
+		}
 		return b
 	}
 	b.lists = lists
@@ -157,6 +162,10 @@ func (b *stripBook) get(agent string) []string {
 // whole. The book changes only when the file was written.
 func (b *stripBook) set(agent string, items []string) error {
 	b.mu.Lock()
+	if b.broken != nil {
+		b.mu.Unlock()
+		return b.broken
+	}
 	next := make(map[string][]string, len(b.lists)+1)
 	for a, l := range b.lists {
 		next[a] = l
@@ -199,6 +208,7 @@ func writeStripFile(path string, lists map[string][]string) error {
 		}
 		return nil
 	}
+	ticket := takeSaveTicket(path) // with the content, under the book's mutex
 	body := stripFileBody{Version: stripFileVersion, Agents: lists}
 	data, err := yaml.Marshal(body)
 	if err != nil {
@@ -207,5 +217,5 @@ func writeStripFile(path string, lists map[string][]string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return writeFileAtomic(path, data, 0o600)
+	return writeFileAtomic(ticket, data, 0o600)
 }

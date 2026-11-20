@@ -193,7 +193,10 @@ func TestFleetState_CorruptStoreIsAnError(t *testing.T) {
 // TestFleetState_CorruptStoreDegradesReadOnlyAndNeverErases is the ini-9ka.9
 // junction rule, applied here: an unreadable store yields a store that answers
 // reads but refuses writes, and the operator's real bytes are left untouched.
-func TestFleetState_CorruptStoreDegradesReadOnlyAndNeverErases(t *testing.T) {
+// In a second window (a viewer), a corrupt store still degrades read-only and
+// the file is never touched: only window 1 sets a state file aside (ini-5xcb).
+// Window 1's case is TestStateFiles_WindowOneSetsABadFileAside.
+func TestFleetState_CorruptStoreInAViewerDegradesReadOnlyAndNeverErases(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".initech"), 0700); err != nil {
 		t.Fatal(err)
@@ -206,6 +209,7 @@ func TestFleetState_CorruptStoreDegradesReadOnlyAndNeverErases(t *testing.T) {
 	tui := newTestTUI(testPane("eng1"))
 	tui.projectRoot = root
 	tui.agentEvents = make(chan AgentEvent, 8)
+	tui.viewerProcess, tui.windowID = true, "window-2"
 
 	fs := tui.fleetState()
 	if !fs.readOnly {

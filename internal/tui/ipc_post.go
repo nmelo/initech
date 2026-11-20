@@ -61,6 +61,9 @@ func (t *TUI) inboxState() *Inbox {
 	t.inboxOnce.Do(func() {
 		authority := t.isFleetAuthority()
 		ib, err := LoadInbox(t.projectRoot, authority)
+		if err != nil && t.setAsideIfOwner("inbox", inboxPath(t.projectRoot), err) {
+			ib, err = LoadInbox(t.projectRoot, authority) // the file is gone: a fresh store
+		}
 		if err != nil {
 			LogWarn("inbox", "load failed; refusing writes", "err", err)
 			ib = newFallbackInbox(t.projectRoot, authority)

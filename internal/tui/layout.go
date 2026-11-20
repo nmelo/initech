@@ -729,6 +729,9 @@ func formatGrid(cols, rows int) string {
 //
 // The layout file is ONE file per project (ini-qodm).
 func SaveLayout(projectRoot string, state LayoutState) error {
+	// The save's number, taken with its content (state, which the caller
+	// snapshotted on the main goroutine).
+	ticket := takeSaveTicket(layoutPath(projectRoot))
 	// WRITE GUARD (ini-qkwc AC4): no window-alias key ever persists again,
 	// regardless of which future caller built the map. Read-side healing
 	// without this is a leak with a mop -- a viewer whose paneKeys carry the
@@ -769,8 +772,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 	// windows saving concurrently would otherwise stage through the same
 	// .tmp and rename over each other, cross-contaminating final files that
 	// look independent by name (ini-9ka.3).
-	final := layoutPath(projectRoot)
-	if err := writeFileAtomic(final, data, 0600); err != nil {
+	if err := writeFileAtomic(ticket, data, 0600); err != nil {
 		return fmt.Errorf("write layout: %w", err)
 	}
 	return nil
@@ -784,6 +786,14 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 // or would result in all currently known panes hidden.
 // The layout file is ONE file per project (ini-qodm).
 func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
+	return LoadLayoutFor(projectRoot, paneKeys, true)
+}
+
+// LoadLayoutFor is LoadLayout for a process that owns the file (window 1) or
+// does not (a second window). Only the owner sets aside a file that does not
+// parse at all, and only the owner saves a heal: a viewer's load never writes
+// layout.yaml. Field-level repairs are the same for both.
+func LoadLayoutFor(projectRoot string, paneKeys []string, owner bool) (LayoutState, bool) {
 	data, err := os.ReadFile(layoutPath(projectRoot))
 	if err != nil {
 		return LayoutState{}, false
@@ -794,6 +804,12 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 
 	var pl PersistentLayout
 	if err := yaml.Unmarshal(data, &pl); err != nil {
+		// A file that does not parse at all is set aside, so the next save
+		// does not overwrite the operator's file; the window starts on
+		// defaults as before.
+		if owner {
+			setAsideStateFile("layout", layoutPath(projectRoot), fmt.Errorf("%w: %v", errStateUnparseable, err))
+		}
 		return LayoutState{}, false
 	}
 	// Canonicalize BEFORE any field is consumed. Healing later would leave
@@ -936,10 +952,11 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 	// back is per-window property, not shared session state -- civ satisfied
 	// by ownership. Without this the heal re-runs and re-logs on every load
 	// forever, and the disk form never converges.
-	if healed {
+	if healed && owner {
 		pl.GroupOf = normalized
+		ticket := takeSaveTicket(layoutPath(projectRoot))
 		if data, err := yaml.Marshal(&pl); err == nil {
-			if err := writeFileAtomic(layoutPath(projectRoot), data, 0600); err != nil {
+			if err := writeFileAtomic(ticket, data, 0600); err != nil {
 				LogWarn("layout", "could not persist group_of heal; will re-heal next load", "err", err)
 			}
 		}

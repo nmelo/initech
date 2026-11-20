@@ -307,6 +307,10 @@ type TUI struct {
 	// projectName is shown in the overlay title ("Agents (initech)").
 	// Comes from initech.yaml's project field. Empty falls back to "Agents".
 	projectName string
+	// viewerProcess is set for a second window (--window N): a process that
+	// never owns the rig's state files, whatever its windowID says while it
+	// starts. It never sets one of them aside.
+	viewerProcess bool
 
 	// project holds the full config for cross-machine peer name lookup and
 	// remote connection routing. Nil when no config is loaded (tests).
@@ -1102,7 +1106,7 @@ func Run(cfg Config) error {
 	var layoutState LayoutState
 	firstLaunch := false
 	if !cfg.ResetLayout && cfg.ProjectRoot != "" {
-		if saved, ok := LoadLayout(cfg.ProjectRoot, agentNames); ok {
+		if saved, ok := LoadLayoutFor(cfg.ProjectRoot, agentNames, !viewer); ok {
 			layoutState = saved
 		} else {
 			layoutState = DefaultLayoutState(agentNames)
@@ -1144,6 +1148,7 @@ func Run(cfg Config) error {
 		lastH:             initH,
 		projectRoot:       cfg.ProjectRoot,
 		projectName:       cfg.ProjectName,
+		viewerProcess:     viewer,
 		project:           cfg.Project,
 		version:           cfg.Version,
 		sockPath:          sp,
@@ -1396,7 +1401,11 @@ func Run(cfg Config) error {
 	// Left nil otherwise, which is what makes visiblePanesForWindow a no-op
 	// for ordinary single-window sessions.
 	if cfg.Project != nil && (cfg.Project.WindowListen != "" || isSecondaryWindowIdentity(cfg.Project.PeerName)) {
-		if a, err := LoadAssignment(cfg.ProjectRoot, t.windowID); err != nil {
+		a, err := LoadAssignment(cfg.ProjectRoot, t.windowID)
+		if err != nil && t.setAsideIfOwner("assignment", assignmentPath(cfg.ProjectRoot), err) {
+			a, err = LoadAssignment(cfg.ProjectRoot, t.windowID) // the file is gone: a fresh store
+		}
+		if err != nil {
 			// A corrupt store must not take down the session: fall back to
 			// single-window rendering (window 1 shows everything) rather than
 			// refusing to start with agents already running.

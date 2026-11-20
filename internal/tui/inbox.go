@@ -296,7 +296,7 @@ func LoadInbox(projectRoot string, authority bool) (*Inbox, error) {
 
 	var pi persistentInbox
 	if err := yaml.Unmarshal(data, &pi); err != nil {
-		return newFallbackInbox(projectRoot, authority), fmt.Errorf("parse inbox: %w", err)
+		return newFallbackInbox(projectRoot, authority), fmt.Errorf("parse inbox: %w: %v", errStateUnparseable, err)
 	}
 
 	for _, it := range pi.Items {
@@ -360,11 +360,12 @@ func (ib *Inbox) save() error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create .initech/: %w", err)
 	}
+	ticket := takeSaveTicket(inboxPath(ib.root)) // with the content, under ib.mu
 	data, err := yaml.Marshal(&persistentInbox{Items: ib.items, NextID: ib.nextID})
 	if err != nil {
 		return fmt.Errorf("marshal inbox: %w", err)
 	}
-	if err := writeFileAtomic(inboxPath(ib.root), data, 0600); err != nil {
+	if err := writeFileAtomic(ticket, data, 0600); err != nil {
 		return fmt.Errorf("write inbox: %w", err)
 	}
 	return nil

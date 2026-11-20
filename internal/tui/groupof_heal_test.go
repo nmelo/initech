@@ -265,3 +265,24 @@ func TestPersistHealIfNeeded_Refusals(t *testing.T) {
 			"the unreadable file and was just silently erased")
 	}
 }
+
+// A viewer's load heals in memory and never writes layout.yaml (ini-5xcb item
+// 6): only window 1 saves the heal. The twin, window 1's load, is
+// TestLoadLayout_HealPersistsOnce.
+func TestLoadLayout_AViewerNeverSavesTheHeal(t *testing.T) {
+	root := writeQkwcLayout(t, "", qkwcSeed)
+	before, err := os.ReadFile(layoutPath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := LoadLayoutFor(root, []string{"eng1", "eng2", "qa1"}, false); !ok {
+		t.Fatal("the viewer's load failed")
+	}
+	after, _ := os.ReadFile(layoutPath(root))
+	if string(after) != string(before) {
+		t.Error("a viewer's load wrote layout.yaml")
+	}
+	if !strings.Contains(string(after), "window1:") {
+		t.Fatal("the fixture has no alias to heal, so this test proves nothing")
+	}
+}

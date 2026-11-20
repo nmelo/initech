@@ -1,10 +1,54 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 )
+
+// A save's ticket numbers it among the saves of one file, in the order their
+// content was taken. The writer renames a save into place only when no newer
+// save of that file has landed, so an older save never replaces a newer one:
+// a save that comes too late is dropped, and the newer save on disk already
+// carries its change, because every caller takes its ticket where it takes
+// its content, from the same in-memory state.
+type saveTicket struct {
+	path string
+	n    uint64
+}
+
+// fileSeq is one file's numbering: the last ticket handed out and the last
+// that landed. Its lock also orders the renames of that file.
+type fileSeq struct {
+	mu            sync.Mutex
+	taken, landed uint64
+}
+
+var fileSeqs sync.Map // absolute path -> *fileSeq
+
+func seqFor(path string) *fileSeq {
+	key := filepath.Clean(path)
+	if abs, err := filepath.Abs(path); err == nil {
+		key = abs
+	}
+	v, _ := fileSeqs.LoadOrStore(key, &fileSeq{})
+	return v.(*fileSeq)
+}
+
+// takeSaveTicket numbers a save of path. Call it where the save's content is
+// taken, before it is marshalled, inside whatever keeps that content
+// consistent (the main goroutine, or the store's mutex).
+func takeSaveTicket(path string) saveTicket {
+	s := seqFor(path)
+	s.mu.Lock()
+	s.taken++
+	n := s.taken
+	s.mu.Unlock()
+	return saveTicket{path: path, n: n}
+}
 
 // writeFileAtomic writes data to path via a UNIQUE staging file, then renames
 // it into place. It is the single implementation of the write-temp-then-rename
@@ -40,7 +84,13 @@ import (
 // a syscall per write to tidy a case that only follows a crash. If stale temps
 // are ever seen accumulating in the wild, a sweep on startup is the cheaper
 // place to add one.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+//
+// The ticket orders the saves of one file (see saveTicket): the rename runs
+// under the file's lock and only when no newer ticket has landed; an older
+// one's staging file is removed, one debug line says so, and the save reports
+// success. Nothing here syncs to disk: the layout path's timing is unchanged.
+func writeFileAtomic(t saveTicket, data []byte, perm os.FileMode) error {
+	path := t.path
 	dir := filepath.Dir(path)
 	// CreateTemp gives every writer its own staging file. The pattern keeps the
 	// temps recognisable and beside the target, so a rename never crosses a
@@ -68,9 +118,58 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		os.Remove(tmp)
 		return fmt.Errorf("close temp file: %w", err)
 	}
+	s := seqFor(path)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t.n <= s.landed {
+		os.Remove(tmp)
+		LogDebug("atomic-write", "older save dropped: a newer one has landed", "path", path, "save", t.n, "landed", s.landed)
+		return nil
+	}
 	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)
 		return fmt.Errorf("rename into place: %w", err)
 	}
+	s.landed = t.n
 	return nil
+}
+
+// errStateUnparseable marks a state file that was read but does not parse (or
+// has another version): the one case a store's file is set aside.
+var errStateUnparseable = errors.New("does not parse")
+
+// stateNow is the clock a set-aside file is named by; tests fix it.
+var stateNow = time.Now
+
+// setAsideStateFile renames a state file that does not parse to
+// <path>.bad-<UTC time>, with one log line naming it, and reports whether it
+// moved. Only window 1 calls it, and only for errStateUnparseable: a viewer,
+// a file that cannot be read, or a rename that fails leaves the file where it
+// is, and the store stays read-only, so a file is never overwritten in place.
+func setAsideStateFile(store, path string, cause error) (string, bool) {
+	return setAsideStateFileAt(store, path, cause, stateNow())
+}
+
+// setAsideStateFileAt is setAsideStateFile at a given time.
+func setAsideStateFileAt(store, path string, cause error, now time.Time) (string, bool) {
+	aside := path + ".bad-" + now.UTC().Format("20060102T150405Z")
+	if err := os.Rename(path, aside); err != nil {
+		LogWarn(store, "state file does not parse and could not be set aside; refusing changes until it is fixed",
+			"file", path, "err", cause, "rename_err", err)
+		return "", false
+	}
+	LogWarn(store, "state file did not parse; set aside, starting empty", "file", path, "aside", aside, "err", cause)
+	return aside, true
+}
+
+// setAsideIfOwner sets a store's file aside when it did not parse and this
+// process owns the rig's state (window 1, not a second window), and reports
+// whether the store may start empty and writable. Any other failure, and any
+// viewer, keeps the store's read-only fallback.
+func (t *TUI) setAsideIfOwner(store, path string, err error) bool {
+	if t.viewerProcess || !t.isFleetAuthority() || !errors.Is(err, errStateUnparseable) {
+		return false
+	}
+	_, ok := setAsideStateFile(store, path, err)
+	return ok
 }

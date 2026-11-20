@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -510,5 +511,37 @@ func TestStore_AWatchSetAfterTheStartIsNeverLate(t *testing.T) {
 	}
 	if !get(t, again, before).Late {
 		t.Error("the twin: a watch set before the start, ending on evidence from while it was down, is not late")
+	}
+}
+
+// A bad file that cannot be set aside (a read-only folder) leaves the store
+// refusing every write, so the file is never overwritten in place; the twin,
+// a writable folder, sets it aside and accepts the watch.
+func TestStore_ABadFileThatCannotBeSetAsideRefusesWrites(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("folder permissions are not enforced here")
+	}
+	for _, writable := range []bool{false, true} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "watches.yaml")
+		bad := []byte("{{{ not: [valid")
+		_ = os.WriteFile(path, bad, 0o600)
+		if !writable {
+			_ = os.Chmod(dir, 0o500)
+		}
+		s, _ := Open(path, t0)
+		_, err := s.Add(aWatch("eng8", "ini-a"), t0)
+		_ = os.Chmod(dir, 0o700)
+		if writable && err != nil {
+			t.Errorf("a bad file set aside: the store refused a watch: %v", err)
+		}
+		if !writable {
+			if err == nil {
+				t.Error("a bad file that could not be set aside: the store accepted a watch")
+			}
+			if got, _ := os.ReadFile(path); string(got) != string(bad) {
+				t.Error("the bad file was overwritten in place")
+			}
+		}
 	}
 }

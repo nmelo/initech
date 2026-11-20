@@ -140,7 +140,7 @@ func LoadFleetState(projectRoot string) (*FleetState, error) {
 
 	var pfs persistentFleetState
 	if err := yaml.Unmarshal(data, &pfs); err != nil {
-		return nil, fmt.Errorf("parse fleet state: %w", err)
+		return nil, fmt.Errorf("parse fleet state: %w: %v", errStateUnparseable, err)
 	}
 	for _, k := range pfs.Hidden {
 		if k != "" {
@@ -233,6 +233,7 @@ func (fs *FleetState) save() error {
 		return fmt.Errorf("create .initech/: %w", err)
 	}
 
+	ticket := takeSaveTicket(fleetStatePath(fs.root)) // with the content, below
 	pfs := persistentFleetState{LivePinned: fs.livePinned}
 	for k := range fs.hidden {
 		pfs.Hidden = append(pfs.Hidden, k)
@@ -252,8 +253,7 @@ func (fs *FleetState) save() error {
 		return fmt.Errorf("marshal fleet state: %w", err)
 	}
 
-	final := fleetStatePath(fs.root)
-	if err := writeFileAtomic(final, data, 0600); err != nil {
+	if err := writeFileAtomic(ticket, data, 0600); err != nil {
 		return fmt.Errorf("write fleet state: %w", err)
 	}
 	return nil
@@ -401,8 +401,12 @@ func (t *TUI) fleetState() *FleetState {
 	}
 	fs, err := LoadFleetState(t.projectRoot)
 	if err != nil {
-		LogWarn("fleet", "fleet state unreadable, degrading read-only and refusing writes", "err", err)
-		fs = newFallbackFleetState(t.projectRoot)
+		if t.setAsideIfOwner("fleet", fleetStatePath(t.projectRoot), err) {
+			fs = newFleetState(t.projectRoot) // empty and writable; no legacy import
+		} else {
+			LogWarn("fleet", "fleet state unreadable, degrading read-only and refusing writes", "err", err)
+			fs = newFallbackFleetState(t.projectRoot)
+		}
 	}
 	t.fleet = fs
 	t.applyFleetProjection()

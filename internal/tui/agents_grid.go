@@ -614,6 +614,9 @@ func (t *TUI) agentsAssignment() *WindowAssignment {
 		return t.assignment
 	}
 	a, err := LoadAssignment(t.projectRoot, t.windowID)
+	if err != nil && t.setAsideIfOwner("assignment", assignmentPath(t.projectRoot), err) {
+		a, err = LoadAssignment(t.projectRoot, t.windowID) // the file is gone: a fresh store
+	}
 	if err != nil {
 		// READ-ONLY fallback (ini-9ka.9). The store is unreadable, not
 		// absent -- the operator's real arrangement is still in that file,
