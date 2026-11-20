@@ -14,12 +14,12 @@ public enum DebugScreen: Equatable, Sendable {
     /// rigsPane is the Rigs screen with a pane opened from it.
     case rigsPane(rig: String, pane: String)
 
-    /// parse reads `-debug-screen <name>` from the launch arguments: rigs,
+    /// parse reads `-initech-debug-screen <name>` from the launch arguments: rigs,
     /// blockers, progress, pane:<rig>/<pane>, or rigs:<rig>/<pane> (that pane
     /// opened from Rigs). No argument, or a name it does not know, is nil: the
     /// app opens on Pinned as it always does.
     public static func parse(_ args: [String]) -> DebugScreen? {
-        guard let i = args.firstIndex(of: "-debug-screen"), i + 1 < args.count else { return nil }
+        guard let i = args.firstIndex(of: "-initech-debug-screen"), i + 1 < args.count else { return nil }
         let name = args[i + 1]
         switch name {
         case "rigs": return .rigs

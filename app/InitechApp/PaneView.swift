@@ -501,7 +501,7 @@ struct InputBar: View {
                 .tint(Theme.red)
                 .focused($typing)
                 #if DEBUG
-                // -debug-focus: the keyboard comes up by itself, so that state can be looked at from the Mac.
+                // -initech-debug-focus: the keyboard comes up by itself, so that state can be looked at from the Mac.
                 .onAppear { if UITestHooks.focus { DispatchQueue.main.async { typing = true } } }
                 #endif
             Button {

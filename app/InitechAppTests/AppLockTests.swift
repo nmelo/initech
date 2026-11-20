@@ -46,6 +46,68 @@ final class AppLockTests: XCTestCase {
         XCTAssertEqual(lock.screen, .locked)
     }
 
+    /// The app's moves on the device, as the scene reports them: reaching the
+    /// background locks, every time, and asks nothing on the way out; being back
+    /// in front asks once.
+    func testReachingTheBackground_Locks_EveryTime_AndOnlyTheReturnAsks() async {
+        let auth = ScriptedAuthenticator([true, true, true])
+        let lock = AppLock(store: MemoryPairingStore(paired), authenticator: auth)
+        await lock.moved(to: .active)
+        XCTAssertEqual(lock.screen, .unlocked(paired))
+        XCTAssertEqual(auth.asked, 1)
+        for trip in 1...2 {
+            await lock.moved(to: .inactive)
+            await lock.moved(to: .background)
+            XCTAssertEqual(lock.screen, .locked, "trip \(trip): the app did not lock on reaching the background")
+            XCTAssertEqual(auth.asked, trip, "trip \(trip): Face ID was asked as the app left")
+            await lock.moved(to: .inactive)
+            XCTAssertEqual(auth.asked, trip, "trip \(trip): Face ID was asked before the app was back in front")
+            await lock.moved(to: .active)
+            XCTAssertEqual(auth.asked, trip + 1, "trip \(trip): the return did not ask")
+            XCTAssertEqual(lock.screen, .unlocked(paired))
+        }
+    }
+
+    /// Inactive is not background: Control Center, a banner or the app switcher
+    /// half-open neither lock the app nor ask for Face ID.
+    func testInactiveAlone_NeitherLocksNorAsks() async {
+        let auth = ScriptedAuthenticator([true, true])
+        let lock = AppLock(store: MemoryPairingStore(paired), authenticator: auth)
+        await lock.moved(to: .active)
+        await lock.moved(to: .inactive)
+        XCTAssertEqual(lock.screen, .unlocked(paired), "going inactive locked the app")
+        await lock.moved(to: .active)
+        XCTAssertEqual(auth.asked, 1, "coming back from inactive asked for Face ID")
+        XCTAssertEqual(lock.screen, .unlocked(paired))
+    }
+
+    /// The debug unlocked launch skips one ask and no more: the first ask of that
+    /// launch is answered yes without Face ID, and every later one is Face ID's.
+    func testTheDebugUnlockedLaunch_SkipsOnlyItsFirstAsk() async {
+        let real = ScriptedAuthenticator([true, false])
+        let lock = AppLock(store: MemoryPairingStore(paired), authenticator: LaunchUnlocked(then: real))
+        await lock.moved(to: .active)
+        XCTAssertEqual(lock.screen, .unlocked(paired))
+        XCTAssertEqual(real.asked, 0, "the launch itself asked Face ID")
+        await lock.moved(to: .background)
+        await lock.moved(to: .active)
+        XCTAssertEqual(real.asked, 1, "the return after the launch did not go to Face ID")
+        await lock.moved(to: .background)
+        await lock.moved(to: .active)
+        XCTAssertEqual(real.asked, 2)
+        XCTAssertEqual(lock.screen, .locked, "Face ID said no and the app opened")
+    }
+
+    /// The option is a launch argument and nothing else: a launch without it is
+    /// a plain launch (this test process is one), whatever an earlier launch carried.
+    func testWithoutItsLaunchArgument_TheOptionIsOff() {
+        XCTAssertFalse(ProcessInfo.processInfo.arguments.contains("-initech-debug-unlocked"), "this test must run without the option")
+        XCTAssertFalse(UITestHooks.unlocked)
+        XCTAssertNil(UITestHooks.screen)
+        XCTAssertFalse(UserDefaults.standard.dictionaryRepresentation().keys.contains { $0.contains("debug-unlocked") },
+                       "the option was saved somewhere that outlives a launch")
+    }
+
     func testLeavingTheForeground_LocksAgain() async {
         let auth = ScriptedAuthenticator([true, true])
         let lock = AppLock(store: MemoryPairingStore(paired), authenticator: auth)

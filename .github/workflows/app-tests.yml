@@ -119,6 +119,14 @@ jobs:
         with:
           simulators: "true"
 
+      # The debug launch options (a debug build opened unlocked on a named screen)
+      # must never ship: every run builds the Release app and fails if any option's
+      # name is in it, and checks the Debug app holds them all, so the search is
+      # known to see them. No simulator: two unsigned device builds.
+      - name: The Release app holds no debug launch option
+        timeout-minutes: 25
+        run: app/scripts/release-check.sh build "$RUNNER_TEMP/release-check"
+
       - name: Test on a fresh simulator
         env:
           INITECH_AGENT: ci-${{ github.run_id }}

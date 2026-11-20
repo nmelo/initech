@@ -52,7 +52,7 @@ struct RootView: View {
             LockView { await lock.unlock() }
         #if DEBUG
         case .unlocked where UITestHooks.screen == .lock:
-            LockView {} // -debug-screen lock: the lock screen to look at; nothing is locked
+            LockView {} // -initech-debug-screen lock: the lock screen to look at; nothing is locked
         #endif
         case .unlocked(let pairing):
             MainView(home: HomeModel(service: HTTPService(pairing: pairing)), push: push, inbox: inbox) {
@@ -256,48 +256,48 @@ struct AlwaysYes: Authenticator {
 }
 
 extension UITestHooks {
-    /// unlocked is `-debug-unlocked`: a debug build started from the Mac over
+    /// unlocked is `-initech-debug-unlocked`: a debug build started from the Mac over
     /// the cable opens without Face ID, with the pairing the device already
     /// holds, so a change can be looked at without unlocking by hand. Only that
     /// launch is skipped (LaunchUnlocked). The app opened from its icon carries
     /// no argument and asks as always. Release builds do not contain this.
-    static var unlocked: Bool { ProcessInfo.processInfo.arguments.contains("-debug-unlocked") }
+    static var unlocked: Bool { ProcessInfo.processInfo.arguments.contains("-initech-debug-unlocked") }
 
-    /// screen is `-debug-screen <name>`: the screen such a launch opens on.
+    /// screen is `-initech-debug-screen <name>`: the screen such a launch opens on.
     static var screen: DebugScreen? { DebugScreen.parse(ProcessInfo.processInfo.arguments) }
 
-    /// strip is `-debug-strip <items separated by |>`: sample strip items, to look
+    /// strip is `-initech-debug-strip <items separated by |>`: sample strip items, to look
     /// at the strip before the service sends real ones.
     static var strip: [String]? {
         let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "-debug-strip"), i + 1 < args.count else { return nil }
+        guard let i = args.firstIndex(of: "-initech-debug-strip"), i + 1 < args.count else { return nil }
         return args[i + 1].split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
-    /// screenLines is `-debug-screenlines <lines separated by |>`: sample screen
+    /// screenLines is `-initech-debug-screenlines <lines separated by |>`: sample screen
     /// lines for the pane's "on its screen now" block, to look at it when no pane sits at anything.
     static var screenLines: [String]? {
         let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "-debug-screenlines"), i + 1 < args.count else { return nil }
+        guard let i = args.firstIndex(of: "-initech-debug-screenlines"), i + 1 < args.count else { return nil }
         return args[i + 1].split(separator: "|", omittingEmptySubsequences: false).map(String.init)
     }
 
-    /// show is `-debug-show slide|rename`: the first pinned row slid left on its
+    /// show is `-initech-debug-show slide|rename`: the first pinned row slid left on its
     /// keys, or with its rename prompt up, to look at either from the Mac.
     static var show: String? {
         let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "-debug-show"), i + 1 < args.count else { return nil }
+        guard let i = args.firstIndex(of: "-initech-debug-show"), i + 1 < args.count else { return nil }
         return args[i + 1]
     }
 
-    /// focus is `-debug-focus`: the pane's message field takes the keyboard as it appears.
-    static var focus: Bool { ProcessInfo.processInfo.arguments.contains("-debug-focus") }
+    /// focus is `-initech-debug-focus`: the pane's message field takes the keyboard as it appears.
+    static var focus: Bool { ProcessInfo.processInfo.arguments.contains("-initech-debug-focus") }
 
-    /// scroll is `-debug-scroll <points>`: how far down that screen starts, so a
+    /// scroll is `-initech-debug-scroll <points>`: how far down that screen starts, so a
     /// scrolled state can be looked at without a finger. Rigs reads it.
     static var scroll: CGFloat? {
         let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "-debug-scroll"), i + 1 < args.count, let y = Double(args[i + 1]) else { return nil }
+        guard let i = args.firstIndex(of: "-initech-debug-scroll"), i + 1 < args.count, let y = Double(args[i + 1]) else { return nil }
         return CGFloat(y)
     }
 }

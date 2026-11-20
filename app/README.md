@@ -180,6 +180,15 @@ The app uses only Apple's system encryption, so `Info.plist` sets
 answer in App Store Connect. Adding encryption of its own goes back to Nelson
 first.
 
+## Debug launch options
+
+A Debug build started from this Mac over the cable takes launch arguments that open it unlocked on a named
+screen or with sample text (`-initech-debug-…`, read in `UITestHooks`), so a change can be looked at without
+hands on the device. They are read from the launch arguments only and nothing saves them: the app opened from
+its icon asks for Face ID as always. They are compiled under `DEBUG`; TestFlight and the archive build Release,
+which holds none of them, and `scripts/release-check.sh` proves that on every app-tests run. A name must stay
+longer than 15 bytes, or an optimised build would hide it from that check.
+
 ## Layout
 
 - `InitechCore/Sources/InitechCore/`: the package: the API shapes

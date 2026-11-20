@@ -247,7 +247,7 @@ struct HomeList: View {
         .onChange(of: home.selection) { openRow = nil }
         .onChange(of: editMode.isEditing) { openRow = nil }
         #if DEBUG
-        // -debug-show slide|rename: the first row slid open on its keys, or being renamed, to look at from the Mac.
+        // -initech-debug-show slide|rename: the first row slid open on its keys, or being renamed, to look at from the Mac.
         .onChange(of: home.rows.first?.ref, initial: true) { _, first in
             if UITestHooks.show == "slide" { openRow = first }
             if UITestHooks.show == "rename", let row = home.rows.first { newName = row.name; renaming = row }

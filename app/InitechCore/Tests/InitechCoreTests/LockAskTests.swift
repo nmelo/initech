@@ -41,6 +41,13 @@ final class LockAskTests: XCTestCase {
     }
 
     /// The app switcher alone (inactive, never background) neither locks nor asks.
+    /// Locked and due, but only inactive (the Face ID sheet's own phase, the app switcher): nothing is asked.
+    func testInactiveWhileLockedAndDue_AsksNothing() {
+        var ask = LockAsk()
+        XCTAssertFalse(ask.moved(to: .inactive, locked: true))
+        XCTAssertTrue(ask.due, "being inactive used up the ask")
+    }
+
     func testTheAppSwitcherAlone_AsksNothing() {
         var ask = LockAsk()
         _ = ask.moved(to: .active, locked: true)
