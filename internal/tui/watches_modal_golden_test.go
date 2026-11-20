@@ -18,28 +18,26 @@ import (
 // golden pins the inset, padding, two-row bands, spacing, shades and backdrop:
 //
 //	. backdrop   m window   s column shade   h column names   b band
-//	S selected   T selected on a shade       ? anything else
+//	S selected   ? anything else
 //
 // Regenerate only on purpose: go test ./internal/tui/ -run TestWatchesModal_Golden -update-golden
 
-// The classes are the picture's own colours, written out here rather than read
+// The classes are the palette's values, written out here rather than read
 // from the code, so a changed colour fails the golden instead of moving with it.
 func wmBgClass(bg tcell.Color) rune {
 	switch bg {
-	case tcell.NewRGBColor(8, 9, 11): // #16181d under rgba(6,7,9,.86)
+	case tcell.NewRGBColor(7, 8, 10): // the panel under the backdrop
 		return '.'
-	case tcell.NewRGBColor(0x1f, 0x21, 0x27):
+	case tcell.NewRGBColor(20, 20, 20): // panel
 		return 'm'
-	case tcell.NewRGBColor(0x22, 0x25, 0x2c):
+	case tcell.NewRGBColor(27, 27, 27): // column shade
 		return 's'
-	case tcell.NewRGBColor(0x10, 0x12, 0x16):
+	case tcell.NewRGBColor(10, 10, 10): // header band
 		return 'h'
-	case tcell.NewRGBColor(0x3a, 0x40, 0x54):
+	case tcell.NewRGBColor(44, 44, 44): // group band
 		return 'b'
-	case tcell.NewRGBColor(0x32, 0x35, 0x4b): // rgba(127,134,217,.2) over the window
+	case tcell.ColorDarkBlue: // selection
 		return 'S'
-	case tcell.NewRGBColor(0x35, 0x38, 0x4f): // the same over a shade
-		return 'T'
 	}
 	return '?'
 }

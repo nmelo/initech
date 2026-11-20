@@ -338,24 +338,29 @@ func (t *TUI) moveWatchesSelection(by int) {
 	t.watchesM.selected = rows[i].w.ID
 }
 
-// The picture's colors.
+// The watches window's colours, each a role of the shared palette
+// (palette.go), so the window reads as the same program as agents, help and
+// top. The names are this file's; no value is.
 var (
-	wmBg     = tcell.NewRGBColor(0x1f, 0x21, 0x27)
-	wmShade  = tcell.NewRGBColor(0x22, 0x25, 0x2c)
-	wmHead   = tcell.NewRGBColor(0x10, 0x12, 0x16)
-	wmBand   = tcell.NewRGBColor(0x3a, 0x40, 0x54)
-	wmSel    = tcell.NewRGBColor(0x32, 0x35, 0x4b)
-	wmSelSh  = tcell.NewRGBColor(0x35, 0x38, 0x4f)
-	wmBorder = tcell.NewRGBColor(0x7f, 0x86, 0xd9)
-	wmRule   = tcell.NewRGBColor(0x34, 0x38, 0x42)
-	wmText   = tcell.NewRGBColor(0xc9, 0xcd, 0xd6)
-	wmBright = tcell.NewRGBColor(0xe3, 0xe6, 0xec)
-	wmDim    = tcell.NewRGBColor(0x8b, 0x90, 0x9b)
-	wmBandFg = tcell.NewRGBColor(0xff, 0xff, 0xff)
-	wmID     = tcell.NewRGBColor(0x6e, 0xa8, 0xff)
-	wmOK     = tcell.NewRGBColor(0x8f, 0xbf, 0x6a)
-	wmBad    = tcell.NewRGBColor(0xe0, 0x6c, 0x75)
-	wmWarn   = tcell.NewRGBColor(0xe5, 0xc0, 0x7b)
+	wmBg     = palette.Panel
+	wmShade  = palette.ColumnShade
+	wmHead   = palette.HeaderBand
+	wmBand   = palette.GroupBand
+	wmSel    = palette.SelectionBg
+	wmSelSh  = palette.SelectionBg // the selection reads the same on a shaded column
+	wmSelFg  = palette.SelectionFg
+	wmBorder = palette.Border
+	wmRule   = palette.Border
+	wmText   = palette.Text
+	wmBright = palette.ColumnHead
+	wmTitle  = palette.Title
+	wmDim    = palette.Dim
+	wmHint   = palette.Hint
+	wmBandFg = palette.Heading
+	wmID     = palette.Accent
+	wmOK     = palette.OK
+	wmBad    = palette.Bad
+	wmWarn   = palette.Warning
 )
 
 // The columns: mark, set by, waits for, why, age, deadline. Waits for and age
@@ -470,19 +475,12 @@ func dimBehind(s tcell.Screen) {
 	}
 }
 
-// wmScreenBg stands for a default background behind the modal: the picture's.
-var wmScreenBg = tcell.NewRGBColor(0x16, 0x18, 0x1d)
+// wmScreenBg stands for a default background behind the modal: the panel's.
+var wmScreenBg = palette.Panel
 
-// watchDimColor is c under the backdrop; a default or palette color without RGB
-// is dimmed from fallback.
-func watchDimColor(c, fallback tcell.Color) tcell.Color {
-	r, g, b := c.RGB()
-	if r < 0 {
-		r, g, b = fallback.RGB()
-	}
-	mix := func(v, o int32) int32 { return (v*14 + o*86) / 100 }
-	return tcell.NewRGBColor(mix(r, 6), mix(g, 7), mix(b, 9))
-}
+// watchDimColor is c under the backdrop; a colour without RGB (the terminal
+// default) is dimmed from fallback.
+func watchDimColor(c, fallback tcell.Color) tcell.Color { return palette.UnderBackdrop(c, fallback) }
 
 // renderWatchesModal draws the modal and, over it, the detail box.
 func (t *TUI) renderWatchesModal() {
@@ -602,8 +600,8 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 	// The title line on the top border, with the counts; the missed count red.
 	tx, tmax := x0+2, boxW-4
 	title := []watchSeg{{text: " "}, {text: "watches"}}
-	styles := []tcell.Style{base, base.Foreground(tcell.ColorWhite).Bold(true)}
-	sep := base.Foreground(wmDim)
+	styles := []tcell.Style{base, base.Foreground(wmTitle).Bold(true)}
+	sep := base.Foreground(wmHint)
 	add := func(text string, st tcell.Style) {
 		title = append(title, watchSeg{text: text})
 		styles = append(styles, st)
@@ -678,7 +676,7 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 		s.SetContent(x, ry, '─', nil, base.Foreground(wmRule))
 	}
 	fx, fmax := tableX, inner
-	word := base.Foreground(wmDim)
+	word := base.Foreground(wmHint)
 	// The keys are bright; the last hint's "read-only:" is dim, as pictured.
 	keyStyle := func(i int) tcell.Style {
 		if i == len(watchesHints)-1 {
@@ -787,7 +785,10 @@ func (t *TUI) drawWatchCells(fill func(x, y, w int, st tcell.Style), put func(x,
 		w := cols[c] - pad
 		text := cell
 		ended := r.w.State == watch.Fired || r.w.State == watch.Cancelled
-		if ended {
+		switch {
+		case selected:
+			text = cell.Foreground(wmSelFg) // as top draws its selected row
+		case ended:
 			text = cell.Foreground(wmDim)
 		}
 		switch {

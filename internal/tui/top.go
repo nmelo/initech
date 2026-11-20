@@ -293,16 +293,17 @@ func (t *TUI) renderTop() {
 		startY = 0
 	}
 
-	bgStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(20, 20, 20)).Foreground(tcell.ColorSilver)
-	borderStyle := bgStyle.Foreground(tcell.ColorGray)
-	headerStyle := bgStyle.Bold(true).Foreground(tcell.ColorWhite)
-	normalStyle := bgStyle.Foreground(tcell.ColorSilver)
-	deadStyle := bgStyle.Foreground(tcell.ColorRed)
-	suspendedStyle := bgStyle.Foreground(tcell.ColorDodgerBlue)
-	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
-	totalStyle := bgStyle.Foreground(tcell.ColorYellow).Bold(true)
-	helpStyle := bgStyle.Foreground(tcell.ColorGray)
-	scrollStyle := bgStyle.Foreground(tcell.ColorDodgerBlue)
+	// The shared window palette (palette.go).
+	bgStyle := tcell.StyleDefault.Background(palette.Panel).Foreground(palette.Text)
+	borderStyle := bgStyle.Foreground(palette.Border)
+	headerStyle := bgStyle.Bold(true).Foreground(palette.ColumnHead)
+	normalStyle := bgStyle.Foreground(palette.Text)
+	deadStyle := bgStyle.Foreground(palette.Bad)
+	suspendedStyle := bgStyle.Foreground(palette.Accent)
+	selectedStyle := tcell.StyleDefault.Background(palette.SelectionBg).Foreground(palette.SelectionFg)
+	totalStyle := bgStyle.Foreground(palette.Heading).Bold(true)
+	helpStyle := bgStyle.Foreground(palette.Hint)
+	scrollStyle := bgStyle.Foreground(palette.Accent)
 
 	// Draw opaque background.
 	for y := startY; y < startY+boxH && y < sh; y++ {

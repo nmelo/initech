@@ -531,7 +531,7 @@ func TestWatchesModal_TheFrameIsThePictures(t *testing.T) {
 		t.Errorf("behind the modal: fg %v bg %v, want dimmed under the backdrop", fg, bg)
 	}
 	if _, _, st, _ := s.GetContent(199, 39); true {
-		if _, bg, _ := st.Decompose(); bg != tcell.NewRGBColor(8, 9, 11) { // the picture's #16181d under the backdrop
+		if _, bg, _ := st.Decompose(); bg != tcell.NewRGBColor(7, 8, 10) { // the panel under the backdrop
 			t.Errorf("a default cell behind the modal is not dimmed: bg %v", bg)
 		}
 	}
@@ -722,8 +722,8 @@ func TestWatchesModal_TheRoomierLayout(t *testing.T) {
 	if _, bg := wmStyle(s, lx, ly-1); bg != wmBand || strings.TrimSpace(string([]rune(wmRowText(s, ly-1))[x0+1+watchesPadX:x0+150])) != "" {
 		t.Errorf("the band's first row is not tinted and blank")
 	}
-	if fg, _ := wmStyle(s, lx, ly); fg != tcell.NewRGBColor(0xff, 0xff, 0xff) {
-		t.Errorf("the band label is not white")
+	if fg, _ := wmStyle(s, lx, ly); fg != tcell.ColorYellow {
+		t.Errorf("the band label is not the palette's heading yellow")
 	} else if _, _, st, _ := s.GetContent(lx, ly); func() bool { _, _, a := st.Decompose(); return a&tcell.AttrBold == 0 }() {
 		t.Errorf("the band label is not bold")
 	}

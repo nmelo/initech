@@ -158,13 +158,14 @@ func (t *TUI) renderHelp() {
 		startY = 0
 	}
 
-	bgStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(20, 20, 20)).Foreground(tcell.ColorSilver)
-	borderStyle := bgStyle.Foreground(tcell.ColorGray)
-	titleStyle := bgStyle.Foreground(tcell.ColorDodgerBlue).Bold(true)
-	headerStyle := bgStyle.Foreground(tcell.ColorYellow).Bold(true)
-	bodyStyle := bgStyle.Foreground(tcell.ColorSilver)
-	helpStyle := bgStyle.Foreground(tcell.ColorGray)
-	scrollStyle := bgStyle.Foreground(tcell.ColorDodgerBlue)
+	// The shared window palette (palette.go).
+	bgStyle := tcell.StyleDefault.Background(palette.Panel).Foreground(palette.Text)
+	borderStyle := bgStyle.Foreground(palette.Border)
+	titleStyle := bgStyle.Foreground(palette.Title).Bold(true)
+	headerStyle := bgStyle.Foreground(palette.Heading).Bold(true)
+	bodyStyle := bgStyle.Foreground(palette.Text)
+	helpStyle := bgStyle.Foreground(palette.Hint)
+	scrollStyle := bgStyle.Foreground(palette.Accent)
 
 	// Draw opaque background.
 	for y := startY; y < startY+boxH && y < sh; y++ {
