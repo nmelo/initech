@@ -91,8 +91,12 @@ final class PaneFlowUITests: XCTestCase {
     private func pinFromRigs(_ panes: [String]) {
         app.buttons["Rigs"].tap()
         for pane in panes {
+            // A pane is pinned by sliding its row left, which shows the pin key.
+            let line = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "\(pane) · ")).firstMatch
+            XCTAssertTrue(line.waitForExistence(timeout: 10), "Rigs does not list \(pane)")
+            line.swipeLeft()
             let pin = app.buttons["Pin \(pane)"]
-            XCTAssertTrue(pin.waitForExistence(timeout: 10), "Rigs does not offer \(pane)")
+            XCTAssertTrue(pin.waitForExistence(timeout: 10), "sliding \(pane) left did not offer to pin it")
             pin.tap()
             XCTAssertTrue(pin.waitForNonExistence(timeout: 10), "\(pane) stayed unpinned in Rigs")
         }

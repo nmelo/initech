@@ -196,45 +196,9 @@ struct HomeList: View {
         .refreshable { await home.reload() }
     }
 
-    /// rigsList is every running rig and its panes he has not pinned; one tap
-    /// pins. It is a screen of the bottom bar, like Panes, not a sheet over it.
-    private var rigsList: some View {
-        List {
-            Group {
-                if home.rigs.isEmpty {
-                    Text("No rig is running on the Mac.").font(Theme.mono(.footnote)).foregroundStyle(Theme.dim)
-                }
-                ForEach(home.rigRows, id: \.rig) { rig in
-                    Section {
-                        if rig.panes.isEmpty {
-                            Text("Every pane is pinned.").font(Theme.mono(.footnote)).foregroundStyle(Theme.dim)
-                        }
-                        ForEach(rig.panes) { row in
-                            HStack(spacing: 12) {
-                                PaneRowView(row: row)
-                                Button { Task { await home.pin(row.ref) } } label: {
-                                    Text("+ pin").font(Theme.mono(.caption, .semibold)).foregroundStyle(Theme.red)
-                                        .padding(.horizontal, 8).padding(.vertical, 5)
-                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.red.opacity(0.6), lineWidth: 1))
-                                }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel("Pin \(row.ref.pane)")
-                            }
-                        }
-                    } header: {
-                        Text(rig.rig).font(Theme.mono(.caption, .bold)).foregroundStyle(Theme.soft)
-                            .textCase(nil)
-                    }
-                }
-            }
-            .listRowBackground(Theme.bg)
-            .listRowSeparatorTint(Theme.line)
-            .listRowInsets(EdgeInsets(top: 9, leading: 20, bottom: 9, trailing: 20))
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .refreshable { await home.reload() }
-    }
+    /// rigsList is the Rigs screen (RigsAccordion). It is a screen of the bottom
+    /// bar, like Panes, not a sheet over it.
+    private var rigsList: some View { RigsAccordion(home: home) }
 
     /// header is the prompt line: where he is, and edit on Panes.
     private var header: some View {

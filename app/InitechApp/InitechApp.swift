@@ -243,6 +243,14 @@ extension UITestHooks {
 
     /// screen is `-debug-screen <name>`: the screen such a launch opens on.
     static var screen: DebugScreen? { DebugScreen.parse(ProcessInfo.processInfo.arguments) }
+
+    /// scroll is `-debug-scroll <points>`: how far down that screen starts, so a
+    /// scrolled state can be looked at without a finger. Rigs reads it.
+    static var scroll: CGFloat? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-debug-scroll"), i + 1 < args.count, let y = Double(args[i + 1]) else { return nil }
+        return CGFloat(y)
+    }
 }
 
 /// LaunchUnlocked answers the first ask of a launch with yes, and hands every

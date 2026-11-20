@@ -94,6 +94,20 @@ final class HomeModel: ObservableObject {
         }
     }
 
+    /// RigPanes is one rig on the Rigs screen: all its panes, and whether each is pinned.
+    typealias RigPanes = (rig: String, panes: [(row: PaneRow, pinned: Bool)])
+
+    /// rigPanes is the Rigs screen: every running rig with all of its panes.
+    var rigPanes: [RigPanes] {
+        let pinned = Set(pins.map { PaneRef(rig: $0.rig, pane: $0.pane) })
+        return rigs.map { r in
+            (r.rig, r.agents.map { a in
+                let ref = PaneRef(rig: r.rig, pane: a.role)
+                return (row(ref, name: a.role, a), pinned.contains(ref))
+            })
+        }
+    }
+
     /// open shows a pane, pinned or not.
     func open(_ ref: PaneRef) { selection = ref }
 

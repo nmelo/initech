@@ -31,6 +31,7 @@
 		51D4A944A0E2700D4758F7F8 /* ContractDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E4EEC7D605C41BD843F6DC7 /* ContractDecodingTests.swift */; };
 		54B918EF7002E93756072549 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 08612C6B0EEC57AB3F1801AA /* Assets.xcassets */; };
 		5C34785AC296AEBE541AD12A /* AppLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */; };
+		668D6B0D3C5C7B57AF5843CF /* RigsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270F11F7227D00D7485C947D /* RigsView.swift */; };
 		685878ED785A10A098F263E2 /* ProgressModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80BF034D8710ADF009CF829B /* ProgressModelTests.swift */; };
 		6BFF360A8731EE56647A3EFC /* FixtureServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B4D274B41C77005FCB4951 /* FixtureServer.swift */; };
 		713963C106E54A974BAFD9BF /* progress.json in Resources */ = {isa = PBXBuildFile; fileRef = 98FCDBB52BA4EF5F44D9A727 /* progress.json */; };
@@ -107,6 +108,7 @@
 		17CD690DC1B27DC1AACBC7CA /* PushTapUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushTapUITests.swift; sourceTree = "<group>"; };
 		1A4E60E0BF81FC9AD90D324C /* InitechAppUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InitechAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B1B76910DE131E4477D6D4E /* push-bead.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "push-bead.json"; sourceTree = "<group>"; };
+		270F11F7227D00D7485C947D /* RigsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RigsView.swift; sourceTree = "<group>"; };
 		2DF1A52E1AA6AD143C33B281 /* InitechApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = InitechApp.entitlements; sourceTree = "<group>"; };
 		2F95958437420FF2A2A7F734 /* blockers.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = blockers.json; sourceTree = "<group>"; };
 		317938B4B8813532A9AD217E /* status.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = status.json; sourceTree = "<group>"; };
@@ -250,6 +252,7 @@
 				CC3E1D3D497C12A586B34C15 /* ProgressView.swift */,
 				345C809540C96C533CD52202 /* PushRegistrar.swift */,
 				934777A3DD77F708BBB96A2A /* PushRoute.swift */,
+				270F11F7227D00D7485C947D /* RigsView.swift */,
 				810FFBAC587C63E014F42FC4 /* Theme.swift */,
 			);
 			path = InitechApp;
@@ -531,6 +534,7 @@
 				A04E78EFB83532AD539D6C7A /* ProgressView.swift in Sources */,
 				2A73B735410EDE12A191B5A7 /* PushRegistrar.swift in Sources */,
 				8385317283AFB68938476CFA /* PushRoute.swift in Sources */,
+				668D6B0D3C5C7B57AF5843CF /* RigsView.swift in Sources */,
 				E92F02B06A3D943EB4644AB2 /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
