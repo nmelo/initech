@@ -500,6 +500,9 @@ struct InputBar: View {
                 .foregroundStyle(Theme.bright)
                 .tint(Theme.red)
                 .focused($typing)
+                // The lowercase prompt is what the field showed as its name; it is "Message" to VoiceOver and the tests.
+                .accessibilityLabel("Message")
+                .accessibilityIdentifier("Message")
                 #if DEBUG
                 // -initech-debug-focus: the keyboard comes up by itself, so that state can be looked at from the Mac.
                 .onAppear { if UITestHooks.focus { DispatchQueue.main.async { typing = true } } }

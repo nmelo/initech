@@ -94,7 +94,10 @@ final class PaneFlowUITests: XCTestCase {
             // A pane is pinned by sliding its row left, which shows the pin key.
             let line = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "\(pane) · ")).firstMatch
             XCTAssertTrue(line.waitForExistence(timeout: 10), "Rigs does not list \(pane)")
-            line.swipeLeft()
+            // A short slide, which opens the row on its key. A far one (swipeLeft) pins at once,
+            // and the key this waits for never shows.
+            line.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: line.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
             let pin = app.buttons["Pin \(pane)"]
             XCTAssertTrue(pin.waitForExistence(timeout: 10), "sliding \(pane) left did not offer to pin it")
             pin.tap()
