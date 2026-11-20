@@ -1,0 +1,45 @@
+#!/bin/sh
+# Versioned reference-transaction hook: no private term reaches a branch.
+#
+# WHY THIS HOOK AND NOT pre-commit. git commit --no-verify skips pre-commit and
+# commit-msg, and a hook cannot see the flag. Every commit, amend, merge,
+# rebase and cherry-pick moves a branch through a reference transaction, flag
+# or not, so the check lives here. core.hooksPath -> scripts/hooks (make
+# install-hooks, and the scaffold for checkouts it creates) is the only
+# wiring.
+#
+# In the "prepared" phase git hands us "<old> <new> <ref>" per update, and a
+# non-zero exit aborts the whole transaction. For each refs/heads/* update we
+# scan the lines it adds: git diff old new for a branch that existed, and the
+# commits on no other branch for a new one. A deletion adds nothing. Tags,
+# remote-tracking refs, HEAD, stash and rebase bookkeeping refs are skipped.
+# A file the update does not touch is never read, so an old line elsewhere in
+# the tree never blocks a commit; scripts/private-scan.sh --tree is the
+# whole-tree report.
+#
+# scripts/private-scan.sh holds the rules: the list's place, what a hit
+# prints (path:line and the pattern's number, never the text), and that a
+# missing list refuses everything.
+[ "${1:-}" = "prepared" ] || exit 0
+
+top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 1
+scan="$top/scripts/private-scan.sh"
+if [ ! -f "$scan" ]; then
+	# A checkout from before the scanner, wired to this hooks folder.
+	echo "reference-transaction: $scan is missing; refusing the update" >&2
+	exit 1
+fi
+
+status=0
+while read -r old new ref; do
+	case "$ref" in refs/heads/*) ;; *) continue ;; esac
+	case "$new" in *[!0]*) ;; *) continue ;; esac
+	case "$old" in
+	*[!0]*) git diff --no-color --no-ext-diff --unified=0 "$old" "$new" ;;
+	*) git log -p --no-color --no-ext-diff --unified=0 --format= "$new" --not --branches ;;
+	esac | sh "$scan" --diff || {
+		echo "reference-transaction: refused the update of $ref" >&2
+		status=1
+	}
+done
+exit $status

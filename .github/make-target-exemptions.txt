@@ -12,6 +12,7 @@
 
 build          # compile the binary for local use; CI builds directly rather than through this. TRIGGER: by hand, whenever a developer wants a binary.
 clean          # delete the built binary. TRIGGER: by hand.
+private-scan   # the whole-tree report of private terms (scripts/private-scan.sh --tree); never in CI, whose logs are public and whose runners hold no list. TRIGGER: shipper, at each release cut, as a report that does not hold the cut; and whoever finishes a private-name cleanup.
 install-hooks  # point core.hooksPath at scripts/hooks. TRIGGER: once per checkout, by whoever clones; the scaffold does it automatically for checkouts it creates.
 lint           # golangci-lint over the tree; not in a gate because the linter is not a required dev dependency. TRIGGER: by hand, before a large refactor.
 

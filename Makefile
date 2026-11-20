@@ -23,7 +23,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: release-install-test release-sign-test release-publish-test release-sign release-publish build test test-full test-race integration vet vet-linux lint test-census rig-census template-census short-census lint-test-names lint-test-names-self-test clean release check check-fast install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
+.PHONY: private-scan release-install-test release-sign-test release-publish-test release-sign release-publish build test test-full test-race integration vet vet-linux lint test-census rig-census template-census short-census lint-test-names lint-test-names-self-test clean release check check-fast install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -279,7 +279,16 @@ release-sign-test:
 # that 6 of 8 fleet checkouts never made. This target just points git at it.
 install-hooks:
 	@git config core.hooksPath scripts/hooks && \
-	  echo "core.hooksPath -> scripts/hooks (versioned pre-commit active)"
+	  echo "core.hooksPath -> scripts/hooks (versioned pre-commit and reference-transaction active)"
+
+# private-scan: the whole-tree report of terms that belong only to a private
+# rig (scripts/private-scan.sh --tree). The commit guard is the versioned
+# reference-transaction hook, which scans what each branch update adds; this
+# reads every tracked file, for the release step and after a cleanup. It
+# prints path:line and the pattern's number, never the text, and exits 1 on a
+# hit or with no list at ~/.config/initech/private-terms.
+private-scan:
+	@sh scripts/private-scan.sh --tree
 
 # hooks-check (ini-3nzc): fails make check loudly when the invoking checkout
 # has no hook wiring. WIRING check only -- cheap enough to run every time.
