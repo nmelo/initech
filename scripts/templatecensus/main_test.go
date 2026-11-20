@@ -131,7 +131,9 @@ func TestScanMentions_AgreesWithAPlainGrepOfTheRealTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ms) < 100 {
+	// A floor, not the proof (the exact identity below is): 114 mentions
+	// before the operator inbox guide left the templates, 97 after it.
+	if len(ms) < 90 {
 		t.Fatalf("only %d mentions in the real templates — the scanner is reading less than the corpus", len(ms))
 	}
 	// An independent count, derived differently, as an exact accounting

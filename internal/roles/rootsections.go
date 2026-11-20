@@ -150,7 +150,6 @@ Agents on the same bead talk directly and post everything on the bead. The imple
 
 - Before messaging an agent you have not heard from: ` + "`" + `initech peek <agent> -n 5` + "`" + `.
 - After a dispatch, peek within two minutes to confirm the agent picked it up.
-- The operator's inbox, ` + "`" + `initech post` + "`" + `, and its five rules are in ` + "`" + `fleet/reference.md` + "`" + `. initech post is deprecated and is removed in the next release: ask super with ` + "`" + `initech send super` + "`" + `, and for a default set a watch with ` + "`" + `initech watch set --until <time>` + "`" + `.
 `
 
 // RootBudgetSection is who may spend more time and tokens, and when.
@@ -201,9 +200,7 @@ When the operator or super corrects you, or the work reveals a process gap, appl
 `
 
 // RootSections returns the shared sections in render order for a fleet of
-// roleNames. The operator inbox guide is part of Messaging: it renders
-// straight after that section's text, where an agent reading about messages
-// meets it. Sentences that name sec or arch are role blocks, rendered for
+// roleNames. Sentences that name sec or arch are role blocks, rendered for
 // roleNames (RenderRoleBlocks).
 func RootSections(roleNames []string) []string {
 	sections := []string{

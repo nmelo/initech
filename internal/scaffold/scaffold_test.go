@@ -274,3 +274,28 @@ func TestRun_ForceKeepsFleetFiles(t *testing.T) {
 		}
 	}
 }
+
+// The inbox is removed (ini-jxjl.3): a new rig's root CLAUDE.md and
+// fleet/reference.md name no initech post and no inbox. The twin, a control
+// word every new root carries, shows the files were read.
+func TestRun_ANewRigNamesNoInbox(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "project")
+	if _, err := Run(testProject(root), Options{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, f := range []string{"CLAUDE.md", "fleet/reference.md"} {
+		b, err := os.ReadFile(filepath.Join(root, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		low := strings.ToLower(string(b))
+		for _, gone := range []string{"initech post", "inbox"} {
+			if strings.Contains(low, gone) {
+				t.Errorf("a new rig's %s still names %q", f, gone)
+			}
+		}
+		if f == "CLAUDE.md" && !strings.Contains(string(b), "## Messaging") {
+			t.Errorf("control: the new root has no Messaging section, so the check read nothing")
+		}
+	}
+}

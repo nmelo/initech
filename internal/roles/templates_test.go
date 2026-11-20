@@ -1,6 +1,7 @@
 package roles
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -202,117 +203,6 @@ func renderForRole(t *testing.T, tmpl string) string {
 	return Render(tmpl, RenderVars{ProjectName: "testproject", ProjectRoot: "/tmp/testproject"})
 }
 
-// flattenWhitespace collapses every run of whitespace to one space so a
-// prose assertion survives re-wrapping. A sentence that moved across a line
-// break is the same sentence; a sentence that was DELETED is what these
-// tests are for, and that still reds.
-func flattenWhitespace(s string) string {
-	return strings.Join(strings.Fields(s), " ")
-}
-
-// containsPhrase reports whether haystack contains phrase, both flattened.
-func containsPhrase(haystack, phrase string) bool {
-	return strings.Contains(flattenWhitespace(haystack), flattenWhitespace(phrase))
-}
-
-// communicationSection returns the root's "## Messaging" section: from its
-// heading to the next top-level heading, or to the end.
-func communicationSection(t *testing.T, role, out string) string {
-	t.Helper()
-	const heading = "## Messaging"
-	i := strings.Index(out, heading)
-	if i < 0 {
-		t.Fatalf("%s: no Messaging section", role)
-	}
-	rest := out[i+len(heading):]
-	if j := strings.Index(rest, "\n## "); j >= 0 {
-		rest = rest[:j]
-	}
-	return rest
-}
-
-// rootCommunicationText is where the inbox guide lives: the scaffolded
-// fleet/reference.md (ini-vby5.13; it left the root to keep the root under its
-// line cap). The guide's tests run against it rather than every role;
-// scaffold's tests assert no charter carries it.
-func rootCommunicationText() map[string]string {
-	return map[string]string{"fleet/reference.md": FleetReferenceTemplate}
-}
-
-// AC 1: the rendered template documents initech post with all six flags.
-func TestOperatorInboxGuide_EveryRoleDocumentsPostAndItsFlags(t *testing.T) {
-	flags := []string{"--default", "--chime", "--check", "--mine", "--withdraw", "--stdin", "-f "}
-	for role, tmpl := range rootCommunicationText() {
-		t.Run(role, func(t *testing.T) {
-			out := renderForRole(t, tmpl)
-			if !strings.Contains(out, "initech post") {
-				t.Fatalf("%s's template never mentions initech post — an undocumented channel is an unused one", role)
-			}
-			for _, f := range flags {
-				if !strings.Contains(out, f) {
-					t.Errorf("%s: flag %q missing from the rendered template", role, f)
-				}
-			}
-		})
-	}
-}
-
-// AC 2: each of the five agent-side rules, asserted separately.
-func TestOperatorInboxGuide_EveryRoleCarriesAllFiveRules(t *testing.T) {
-	rules := []struct{ name, phrase string }{
-		{"post with a default and keep going", "Post with a default and keep going"},
-		{"what belongs here", "Only what the operator alone can decide or know"},
-		{"dismissed means no", "Dismissed means no"},
-		{"when to chime", "Chime only when your work is stopped on the answer"},
-		{"never poll", "Never poll"},
-	}
-	for role, tmpl := range rootCommunicationText() {
-		out := renderForRole(t, tmpl)
-		for _, r := range rules {
-			t.Run(role+"/"+r.name, func(t *testing.T) {
-				if !containsPhrase(out, r.phrase) {
-					t.Errorf("%s: rule %q missing (looked for %q). These five rules are the only thing enforcing non-blocking behaviour; a trimmed one is a guard that stopped existing.", role, r.name, r.phrase)
-				}
-			})
-		}
-	}
-}
-
-// AC 3: the worked example, and BOTH of its shapes. Agents copy examples, and
-// one shape teaches one shape (pm grooming): a question that proceeds on its
-// default with the reply arriving later, AND a heads-up expecting nothing.
-func TestOperatorInboxGuide_WorkedExampleCarriesBothShapes(t *testing.T) {
-	for role, tmpl := range rootCommunicationText() {
-		t.Run(role, func(t *testing.T) {
-			out := renderForRole(t, tmpl)
-			if !containsPhrase(out, "Worked example") {
-				t.Fatalf("%s: no worked example — a rule without one is advice", role)
-			}
-			// Shape (a): posts with a default, proceeds immediately, and the
-			// reply arrives later while the agent is on other work.
-			for _, marker := range []string{
-				`--default "update both"`,
-				"You do not wait",
-				"the reply lands in your pane",
-				"the operator's answer replaces your default",
-			} {
-				if !containsPhrase(out, marker) {
-					t.Errorf("%s: the question-with-a-default shape is missing %q", role, marker)
-				}
-			}
-			// Shape (b): a heads-up that expects nothing back.
-			for _, marker := range []string{
-				"A heads-up that expects nothing back",
-				"You do not check it and you do not wait for a reply",
-			} {
-				if !containsPhrase(out, marker) {
-					t.Errorf("%s: the heads-up shape is missing %q", role, marker)
-				}
-			}
-		})
-	}
-}
-
 // ini-vby5.1: a role template carries only the role's delta. The shared
 // sections live in the root CLAUDE.md, so none of their text may reappear in
 // any role.
@@ -350,20 +240,23 @@ func TestSuperTemplate_UsesAssignForEveryHandOffToAnEngineer(t *testing.T) {
 	}
 }
 
-// ini-232c: the inbox guide and the root messaging section say initech post is
-// deprecated and name both replacements: a send to super, and a watch with
-// --until for a default.
-func TestOperatorInboxGuide_SaysPostIsDeprecatedAndNamesTheReplacements(t *testing.T) {
-	const sentence = "initech post is deprecated and is removed in the next release"
-	texts := map[string]string{"messaging section": RootMessagingSection}
-	for role, tmpl := range rootCommunicationText() {
-		texts[role] = renderForRole(t, tmpl)
+// The inbox is removed (ini-jxjl.3): the fleet reference and the root's
+// shared sections name no initech post and no inbox. The twin, the fleet
+// reference's own command list, shows the text was read.
+func TestFleetFiles_NameNoInbox(t *testing.T) {
+	texts := map[string]string{"fleet/reference.md": renderForRole(t, FleetReferenceTemplate)}
+	for i, sec := range RootSections(nil) {
+		texts[fmt.Sprintf("root section %d", i)] = sec
 	}
 	for name, text := range texts {
-		for _, want := range []string{sentence, "initech send super", "initech watch set", "--until"} {
-			if !strings.Contains(text, want) {
-				t.Errorf("%s does not say %q", name, want)
+		low := strings.ToLower(text)
+		for _, gone := range []string{"initech post", "inbox"} {
+			if strings.Contains(low, gone) {
+				t.Errorf("%s still names %q", name, gone)
 			}
 		}
+	}
+	if !strings.Contains(texts["fleet/reference.md"], "initech peek <agent>") {
+		t.Error("control: the fleet reference lost its command list, so the check read nothing")
 	}
 }

@@ -10,10 +10,9 @@ const FleetLessonsTemplate = `# Lessons
 Hard-won lessons behind the rules. Read the matching section before claiming something is verified. Charters carry no history; it lives here.
 `
 
-// FleetReferenceTemplate is the scaffolded fleet/reference.md: commands,
-// where to find the QA pairs, and the operator inbox guide (moved out of the
-// root to keep it under its line cap). The pairs themselves stay in the root's QA
-// pairs section, the copy that hiring keeps current.
+// FleetReferenceTemplate is the scaffolded fleet/reference.md: commands and
+// where to find the QA pairs. The pairs themselves stay in the root's QA pairs
+// section, the copy that hiring keeps current.
 const FleetReferenceTemplate = `# Fleet reference
 
 Commands, the QA pairs and who owns which area.
@@ -40,7 +39,7 @@ initech status                           # every agent, its activity and bead
 initech patrol                           # peek at all agents at once
 initech deliver <id>                     # move a bead one step and report
 ` + "```" + `
-` + OperatorInboxGuide
+`
 
 // SkillsReadmeTemplate is the scaffolded skills/README.md.
 const SkillsReadmeTemplate = `# Skills

@@ -205,7 +205,7 @@ func run(exemptionsFile string, verbose bool) error {
 // Constants, not rendered templates (the templates need no rendering to be
 // read, and a census that required it would depend on the renderer it is
 // meant to be independent of). Each string literal is scanned on its own, so
-// a template built by concatenation — `... ` + OperatorInboxGuide + ` ...` —
+// a template built by concatenation — `... ` + SomeSharedSection + ` ...` —
 // needs no reference resolution: the referenced constant is itself scanned
 // where it is declared, which is also where an author would go to fix it.
 //
