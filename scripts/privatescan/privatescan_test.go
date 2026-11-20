@@ -285,3 +285,58 @@ func TestScan_TreeRefusesWhenGitGrepCannotRun(t *testing.T) {
 		t.Errorf("a failed git grep read as clean: exit %d\n%s", code, out)
 	}
 }
+
+// The message travels with the commit: a new commit whose message holds a
+// term is refused even when its content is clean, --no-verify or not.
+func TestHook_RefusesACommitWhoseMessageHoldsATerm(t *testing.T) {
+	f := newFixture(t, wordList)
+	before := f.head("main")
+	f.write("e.txt", "clean\n")
+	f.git("add", "e.txt")
+	out, err := f.run("git", "commit", "--no-verify", "-q", "-m", "note for "+planted)
+	if err == nil {
+		t.Fatalf("a commit naming a term in its message landed:\n%s", out)
+	}
+	if !strings.Contains(out, "(message):1: pattern 4") || strings.Contains(strings.ToLower(out), planted) {
+		t.Errorf("refusal does not name the message line, or prints the term:\n%s", out)
+	}
+	if f.head("main") != before {
+		t.Error("main moved after a refused message")
+	}
+	// An amend that only rewrites the message is checked the same way.
+	f.git("commit", "-q", "-m", "clean note")
+	if out, err := f.run("git", "commit", "--amend", "--no-verify", "-q", "-m", "about "+planted); err == nil {
+		t.Errorf("an amend putting a term in the message landed:\n%s", out)
+	}
+}
+
+// A commit already published (on a remote-tracking branch) is not this
+// checkout's to publish: bringing it into a branch, as a pull does, is never
+// refused for its message, so a checkout behind main can always catch up.
+func TestHook_APublishedCommitsMessageNeverBlocksAPull(t *testing.T) {
+	f := newFixture(t, wordList)
+	f.git("checkout", "-q", "--detach")
+	f.write("g.txt", "clean\n")
+	f.git("add", "g.txt")
+	f.git("commit", "-q", "--no-verify", "-m", "published with "+planted) // HEAD only: no branch moves
+	pub := f.head("HEAD")
+	f.git("update-ref", "refs/remotes/origin/main", pub)
+	f.git("checkout", "-q", "main")
+	if out, err := f.run("git", "merge", "-q", "--ff-only", "origin/main"); err != nil {
+		t.Fatalf("a fast-forward to a published commit was refused for its message:\n%s", out)
+	}
+}
+
+// A new branch is checked on its new commits' messages too.
+func TestHook_RefusesANewBranchWhoseCommitMessageHoldsATerm(t *testing.T) {
+	f := newFixture(t, wordList)
+	f.git("checkout", "-q", "--detach")
+	f.write("h.txt", "clean\n")
+	f.git("add", "h.txt")
+	f.git("commit", "-q", "--no-verify", "-m", "for "+planted) // HEAD only: no branch moves
+	c := f.head("HEAD")
+	f.git("checkout", "-q", "main")
+	if out, err := f.run("git", "branch", "msg", c); err == nil {
+		t.Errorf("a new branch whose commit message holds a term was made:\n%s", out)
+	}
+}

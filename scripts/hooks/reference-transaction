@@ -11,7 +11,8 @@
 # In the "prepared" phase git hands us "<old> <new> <ref>" per update, and a
 # non-zero exit aborts the whole transaction. For each refs/heads/* update we
 # scan the lines it adds: git diff old new for a branch that existed, and the
-# commits on no other branch for a new one. A deletion adds nothing. Tags,
+# commits on no other branch for a new one; and the message of each new commit
+# that no remote-tracking branch holds yet. A deletion adds nothing. Tags,
 # remote-tracking refs, HEAD, stash and rebase bookkeeping refs are skipped.
 # A file the update does not touch is never read, so an old line elsewhere in
 # the tree never blocks a commit; scripts/private-scan.sh --tree is the
@@ -34,10 +35,25 @@ status=0
 while read -r old new ref; do
 	case "$ref" in refs/heads/*) ;; *) continue ;; esac
 	case "$new" in *[!0]*) ;; *) continue ;; esac
-	case "$old" in
-	*[!0]*) git diff --no-color --no-ext-diff --unified=0 "$old" "$new" ;;
-	*) git log -p --no-color --no-ext-diff --unified=0 --format= "$new" --not --branches ;;
-	esac | sh "$scan" --diff || {
+	{
+		case "$old" in
+		*[!0]*)
+			git diff --no-color --no-ext-diff --unified=0 "$old" "$new"
+			commits=$(git rev-list "$old..$new" --not --remotes)
+			;;
+		*)
+			git log -p --no-color --no-ext-diff --unified=0 --format= "$new" --not --branches
+			commits=$(git rev-list "$new" --not --branches --remotes)
+			;;
+		esac
+		# The message of each new commit travels with it. Only commits on no
+		# remote-tracking branch: one already published is not this
+		# checkout's to publish, so a pull that brings it never blocks.
+		for c in $commits; do
+			printf '+++ b/commit %s (message)\n@@ -0,0 +1 @@\n' "$(git rev-parse --short "$c")"
+			git log -1 --format=%B "$c" | sed 's/^/+/'
+		done
+	} | sh "$scan" --diff || {
 		echo "reference-transaction: refused the update of $ref" >&2
 		status=1
 	}
