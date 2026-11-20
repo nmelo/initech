@@ -244,6 +244,14 @@ extension UITestHooks {
     /// screen is `-debug-screen <name>`: the screen such a launch opens on.
     static var screen: DebugScreen? { DebugScreen.parse(ProcessInfo.processInfo.arguments) }
 
+    /// strip is `-debug-strip <items separated by |>`: sample strip items, to look
+    /// at the strip before the service sends real ones.
+    static var strip: [String]? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-debug-strip"), i + 1 < args.count else { return nil }
+        return args[i + 1].split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
     /// focus is `-debug-focus`: the pane's message field takes the keyboard as it appears.
     static var focus: Bool { ProcessInfo.processInfo.arguments.contains("-debug-focus") }
 

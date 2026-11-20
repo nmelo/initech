@@ -9,6 +9,8 @@ enum Theme {
     /// bar is the background of the bars at the screen's edges.
     static let bar = Color(red: 0.047, green: 0.055, blue: 0.071)
     static let line = Color(red: 0.106, green: 0.118, blue: 0.141)
+    /// strip is the band of a pane's list strip, a shade bluer and lighter than the bars.
+    static let strip = Color(red: 0.137, green: 0.157, blue: 0.204)
     static let bright = Color.white
     static let text = Color(red: 0.843, green: 0.855, blue: 0.878)
     /// soft is secondary text that must still be read; dim is the quietest.

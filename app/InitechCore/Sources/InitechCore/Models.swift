@@ -34,6 +34,10 @@ public struct AgentStatus: Codable, Equatable, Sendable {
     public var contextPercent: Int?
     public var banner: String?
     public var screen: [String]?
+    /// strip is the pane's list strip: what its agent says waits on him, one
+    /// item per line, in the agent's order (`initech strip`). Absent when the
+    /// service does not send it, or the pane has none.
+    public var strip: [String]? = nil
 }
 
 /// Pin is one pane on the home list: where it is, the name he gave it, its place.

@@ -17,6 +17,8 @@ struct PaneRow: Identifiable, Equatable, Sendable {
     var contextPercent: Int?
     var bead: String?
     var screen: [String]?
+    /// strip is the pane's list strip: what its agent says waits on him.
+    var strip: [String] = []
     /// gone is true when the rig is not running or no longer has this pane.
     var gone: Bool
 
@@ -137,7 +139,7 @@ final class HomeModel: ObservableObject {
 
     private func row(_ ref: PaneRef, name: String, _ a: AgentStatus) -> PaneRow {
         PaneRow(ref: ref, name: name, state: a.state, banner: a.banner, contextPercent: a.contextPercent,
-                bead: a.beads?.first, screen: a.screen, gone: false)
+                bead: a.beads?.first, screen: a.screen, strip: a.strip ?? [], gone: false)
     }
 
     // MARK: loading

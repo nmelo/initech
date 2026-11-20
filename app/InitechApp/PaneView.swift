@@ -18,6 +18,21 @@ struct PaneView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var row: PaneRow? { home.row(for: model.ref) }
+    /// strip is the pane's list strip, as its agent set it.
+    var strip: [String] {
+        #if DEBUG
+        if let sample = UITestHooks.strip { return sample }
+        #endif
+        return row?.strip ?? []
+    }
+    /// sampleStrip is true when the strip shown is the debug sample, not the pane's own.
+    var sampleStrip: Bool {
+        #if DEBUG
+        return UITestHooks.strip != nil
+        #else
+        return false
+        #endif
+    }
     /// rows is the conversation as shown: each run of tool calls joined into one row.
     var rows: [ConversationRow] { ConversationRow.group(model.messages) }
 
@@ -137,6 +152,7 @@ struct PaneView: View {
             if let row, row.atDialog, let screen = row.screen, !screen.isEmpty {
                 ScreenLines(lines: screen)
             }
+            if !strip.isEmpty { StripView(items: strip, sample: sampleStrip) }
             InputBar(draft: $draft) { text in Task { await model.send(text) } }
         }
         .background(Theme.bg.ignoresSafeArea())
@@ -356,6 +372,43 @@ struct VerdictLabel: View {
         case .held, .unsure: Theme.orange
         case .notDelivered: Theme.red
         }
+    }
+}
+
+/// StripView is the pane's list strip, as initech draws it at the bottom of a
+/// pane on the Mac: a band with one line per item, each marked ▶, in the
+/// agent's order. A long item wraps under its text; a long list scrolls.
+struct StripView: View {
+    let items: [String]
+    /// sample marks the items as made-up text from the debug option, so they are
+    /// never read as what the pane's agent really set.
+    var sample = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 7) {
+                if sample {
+                    Text("SAMPLE TEXT, NOT THIS PANE'S LIST").font(Theme.mono(.caption2, .bold)).foregroundStyle(Theme.red)
+                }
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("▶").font(Theme.mono(.caption2)).foregroundStyle(Theme.orange)
+                            .accessibilityHidden(true)
+                        Text(item).font(Theme.mono(.footnote)).foregroundStyle(Theme.bright)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: 190)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Theme.strip)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Waiting on you")
+        .accessibilityIdentifier("pane-strip")
     }
 }
 

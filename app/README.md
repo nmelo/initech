@@ -207,4 +207,6 @@ first.
 - `InitechApp/BlockersView.swift`, `ProgressView.swift`, `OperatorScreens.swift`: Blockers (rigs with nothing to
   say share one line) and Progress.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation, under its own header with the way
-  back. A run of tool calls is one line (`InitechCore/.../ToolSummary.swift`); the screen ends with the input line.
+  back. A run of tool calls is one line (`InitechCore/.../ToolSummary.swift`). Above the input line, which ends the
+  screen, sits the pane's list strip when its agent set one (`strip` in the status answer): what waits on you, one
+  line per item.
