@@ -12,6 +12,8 @@ struct PaneView: View {
     @State private var loadingOlder = false
     /// visible is the entries on screen, at least half in view.
     @State private var visible: Set<String> = []
+    /// compact is the pane stacked over the list, where it needs a way back.
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var row: PaneRow? { home.row(for: model.ref) }
 
@@ -114,21 +116,11 @@ struct PaneView: View {
             KeyStrip(last: model.lastKey, atDialog: row?.atDialog ?? false) { key in Task { await model.press(key) } }
         }
         .background(Theme.bg.ignoresSafeArea())
+        // The pane draws its own header, in the list's style, so the system's bar
+        // and its round back button are hidden. The title stays for VoiceOver.
         .navigationTitle(row?.name ?? model.ref.pane)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            // The pane's name and its state, as the Panes list writes them.
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 1) {
-                    Text((row?.name ?? model.ref.pane).lowercased())
-                        .font(Theme.mono(.subheadline, .semibold)).foregroundStyle(Theme.bright)
-                    Text(subtitle).font(Theme.mono(.caption2)).foregroundStyle(Theme.dim)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(row?.name ?? model.ref.pane)
-            }
-        }
-        .toolbarBackground(Theme.bg, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) { header }
         .task {
             await model.open()
         }
@@ -136,6 +128,46 @@ struct PaneView: View {
 }
 
 extension PaneView {
+    /// header is the pane's prompt line. Stacked over the list (iPhone) it
+    /// starts with the way back, "‹ panes"; beside the list (iPad) the list is
+    /// already there. Under it, the pane's state and where it runs; at the right,
+    /// its context.
+    var header: some View {
+        HStack(alignment: .center, spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 0) {
+                    if sizeClass == .compact {
+                        Button { home.selection = nil } label: {
+                            Text("‹ panes").foregroundStyle(Theme.red)
+                                .padding(.vertical, 8).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Back")
+                        .accessibilityIdentifier("BackButton")
+                        Text(" ❯ ").foregroundStyle(Theme.dim)
+                    } else {
+                        Text("❯ ").foregroundStyle(Theme.dim)
+                    }
+                    Text((row?.name ?? model.ref.pane).lowercased()).fontWeight(.bold).foregroundStyle(Theme.bright)
+                        .lineLimit(1)
+                    Rectangle().fill(Theme.red).frame(width: 9, height: 17).padding(.leading, 6)
+                        .accessibilityHidden(true)
+                }
+                .font(Theme.mono(.subheadline))
+                Text(subtitle).font(Theme.mono(.caption2)).foregroundStyle(Theme.dim).lineLimit(1)
+            }
+            Spacer(minLength: 10)
+            if let pct = row?.contextPercent {
+                ContextBarView(percent: pct)
+                Text("\(pct)%").font(Theme.mono(.caption)).foregroundStyle(Theme.soft)
+                    .frame(minWidth: 36, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, 20).padding(.vertical, 7)
+        .background(Theme.bg)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
+    }
+
     /// subtitle is the line under the pane's name: its state and where it runs.
     var subtitle: String {
         let place = "\(model.ref.pane)@\(model.ref.rig)"

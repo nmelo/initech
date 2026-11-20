@@ -304,7 +304,7 @@ final class PaneFlowUITests: XCTestCase {
             XCTAssertTrue(app.staticTexts["the other pane"].waitForExistence(timeout: 10), "the other pane did not open")
             XCTAssertFalse(entry(120).exists, "paneA did not leave")
         } else {
-            app.navigationBars.buttons["BackButton"].tap()
+            app.buttons["BackButton"].tap() // the pane's own way back, "‹ panes"
         }
         XCTAssertTrue(row(paneA).waitForExistence(timeout: 10))
         assertNotEditingTheList()
