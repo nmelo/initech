@@ -74,6 +74,15 @@ struct PaneView: View {
                 // next entry then moved the view to it. Without one, an entry
                 // added below never moves the view.
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
+                // When the room for the conversation shrinks (the keyboard coming up,
+                // the message growing to more lines) and he was at the end, it stays
+                // at the end: the last lines move up with the input line and are never
+                // left under the keyboard. Away from the end, his place is kept.
+                .onScrollGeometryChange(for: [CGFloat].self) { g in
+                    [g.containerSize.height, g.contentSize.height - g.contentOffset.y - g.containerSize.height - g.contentInsets.top]
+                } action: { old, now in
+                    if now[0] < old[0] - 1, old[1] < 40 { proxy.scrollTo(Self.end, anchor: .bottom) }
+                }
                 // He is at the bottom when the newest entry is in view; reaching
                 // it, by a tap or by hand, clears the new-below line.
                 .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.5) { ids in
@@ -373,6 +382,7 @@ struct InputBar: View {
     @Binding var draft: String
     let send: (String) -> Void
     private var empty: Bool { draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    @FocusState private var typing: Bool
 
     var body: some View {
         HStack(alignment: .center, spacing: 9) {
@@ -382,6 +392,11 @@ struct InputBar: View {
                 .font(Theme.mono(.body))
                 .foregroundStyle(Theme.bright)
                 .tint(Theme.red)
+                .focused($typing)
+                #if DEBUG
+                // -debug-focus: the keyboard comes up by itself, so that state can be looked at from the Mac.
+                .onAppear { if UITestHooks.focus { DispatchQueue.main.async { typing = true } } }
+                #endif
             Button {
                 send(draft)
                 draft = ""
@@ -396,8 +411,9 @@ struct InputBar: View {
             .accessibilityLabel("Send")
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 11)
-        .background(Theme.bar)
+        .padding(.vertical, 8)
+        .frame(minHeight: Theme.barHeight)
+        .background(Theme.bar.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
 }

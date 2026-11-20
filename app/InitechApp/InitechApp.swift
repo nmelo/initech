@@ -244,6 +244,9 @@ extension UITestHooks {
     /// screen is `-debug-screen <name>`: the screen such a launch opens on.
     static var screen: DebugScreen? { DebugScreen.parse(ProcessInfo.processInfo.arguments) }
 
+    /// focus is `-debug-focus`: the pane's message field takes the keyboard as it appears.
+    static var focus: Bool { ProcessInfo.processInfo.arguments.contains("-debug-focus") }
+
     /// scroll is `-debug-scroll <points>`: how far down that screen starts, so a
     /// scrolled state can be looked at without a finger. Rigs reads it.
     static var scroll: CGFloat? {

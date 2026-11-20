@@ -1,8 +1,9 @@
 # initech for iPhone and iPad
 
 The SwiftUI client of `initech app-serve`, the service on the Mac. One app for
-iPhone and iPad: a home list of the panes you pinned and named, each pane as a
-conversation you can type into, and a key strip for a pane stuck at a dialog.
+iPhone and iPad, in a terminal's look: a bar of four screens (the panes you
+pinned and named, every rig's panes, what waits on you or is stuck, and
+progress), and each pane as a conversation you can type into.
 
 ## Build and test (headless)
 
@@ -198,6 +199,12 @@ first.
   says how to make the icon again and what each setting changes.
 - `InitechApp/Theme.swift`: the app's look, a terminal's: near-black, monospaced, one red for what can be
   pressed, a colour per pane state. Screens take their colours and type from here.
-- `InitechApp/HomeModel.swift`, `HomeView.swift`: pinned panes and the Rigs view. The Panes list draws its own
-  header (edit, rigs) and bottom keys (blockers, progress), and ends with the build line: version, build, commit.
-- `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation.
+- `InitechApp/HomeModel.swift`, `HomeView.swift`: the list side. It draws its own prompt header and a bottom bar
+  of four keys, one per screen (`ListTab`): Panes, Rigs, Blockers, Progress. Panes ends with the build line:
+  version, build, commit. No screen opens as a sheet.
+- `InitechApp/RigsView.swift`: Rigs. Every rig's header always shows; scrolling opens one rig at a time
+  (`InitechCore/.../RigStack.swift` is the arithmetic), and a row slides left to pin or unpin.
+- `InitechApp/BlockersView.swift`, `ProgressView.swift`, `OperatorScreens.swift`: Blockers (rigs with nothing to
+  say share one line) and Progress.
+- `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation, under its own header with the way
+  back. A run of tool calls is one line (`InitechCore/.../ToolSummary.swift`); the screen ends with the input line.

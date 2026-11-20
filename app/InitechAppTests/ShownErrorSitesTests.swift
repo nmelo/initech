@@ -67,15 +67,6 @@ final class ShownErrorSitesTests: XCTestCase {
         }
     }
 
-    func testPane_ARefusedKeyAndAnUnansweredKeyEachLogOneEntry() async {
-        for (error, code) in [(refused, 409), (unreachable, -1)] {
-            let pane = PaneModel(service: FailingService(error), ref: ref)
-            let got = await logged { await pane.press(.enter) }
-            XCTAssertEqual(got, [entry("pane", code)], "\(error)")
-            XCTAssertEqual(pane.lastKey?.result.verdict, "not_delivered")
-        }
-    }
-
     func testBlockers_AFailedReadLogsOneEntry() async {
         let blockers = BlockersModel(source: FailingService(unreachable))
         let got = await logged { await blockers.reload() }

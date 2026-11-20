@@ -11,8 +11,6 @@ final class PaneModel: ObservableObject {
     @Published private(set) var problem: String?
     /// verdicts holds the send verdict for each message he sent from here.
     @Published private(set) var verdicts: [String: SendResult] = [:]
-    /// lastKey is the newest key-strip verdict, shown under the strip.
-    @Published private(set) var lastKey: (key: PaneKey, result: SendResult)?
 
     let service: Service
     let ref: PaneRef
@@ -121,19 +119,6 @@ final class PaneModel: ObservableObject {
             Log.shown(ServiceError.status(code, words), screen: "pane")
         } catch {
             verdicts[local.id] = SendResult(verdict: "not_delivered", words: "The Mac did not answer: \(error)")
-            Log.shown(error, screen: "pane")
-        }
-    }
-
-    /// press sends one key of the key strip to the pane.
-    func press(_ key: PaneKey) async {
-        do {
-            lastKey = (key, try await service.key(rig: ref.rig, pane: ref.pane, key: key))
-        } catch ServiceError.status(let code, let words?) {
-            lastKey = (key, SendResult(verdict: "not_delivered", words: words))
-            Log.shown(ServiceError.status(code, words), screen: "pane")
-        } catch {
-            lastKey = (key, SendResult(verdict: "not_delivered", words: "The Mac did not answer: \(error)"))
             Log.shown(error, screen: "pane")
         }
     }

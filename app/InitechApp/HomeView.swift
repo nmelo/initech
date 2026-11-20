@@ -262,7 +262,8 @@ struct HomeList: View {
         .lineLimit(1)
         .buttonStyle(.plain)
         .foregroundStyle(Theme.soft)
-        .padding(.horizontal, besideThePane ? 10 : 16).padding(.top, 13).padding(.bottom, 6)
+        .padding(.horizontal, besideThePane ? 10 : 16)
+        .frame(minHeight: Theme.barHeight)
         .background(Theme.bar.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
     }

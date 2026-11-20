@@ -22,6 +22,11 @@ enum Theme {
     static let orange = Color(red: 1.0, green: 0.624, blue: 0.039)
     static let grey = Color(red: 0.627, green: 0.627, blue: 0.667)
 
+    /// barHeight is the least height of a bar at the bottom of the screen: the
+    /// list's keys and the pane's input line, which sit side by side on iPad and
+    /// must end level.
+    static let barHeight: CGFloat = 52
+
     /// mono is the app's typeface at a text style, so it follows the text size
     /// he set on the device.
     static func mono(_ style: Font.TextStyle, _ weight: Font.Weight = .regular) -> Font {
