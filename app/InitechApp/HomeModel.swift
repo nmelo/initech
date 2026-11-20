@@ -55,6 +55,9 @@ final class HomeModel: ObservableObject {
     /// waiting holds each pane's newest item from the blockers list, set at
     /// once by a waiting_item event and read again when the list changes.
     @Published private(set) var waiting: [PaneRef: String] = [:]
+    /// blockerCount is how many rows Blockers has to show: everything waiting on
+    /// him and every stuck pane, in every rig. The bottom bar carries it.
+    @Published private(set) var blockerCount = 0
     /// selection is the open pane: the sidebar's choice on iPad, the pushed
     /// pane on iPhone. Any view holding the model opens a pane with open(_:).
     @Published var selection: PaneRef?
@@ -165,6 +168,7 @@ final class HomeModel: ObservableObject {
             for item in rig.waiting { next[PaneRef(rig: rig.rig, pane: item.pane)] = item.text }
         }
         waiting = next
+        blockerCount = lists.reduce(0) { $0 + $1.waiting.count + $1.stuck.count }
     }
 
     /// startFeed applies feed events until stop; a reset reloads everything.

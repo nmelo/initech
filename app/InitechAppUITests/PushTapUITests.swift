@@ -219,7 +219,7 @@ final class PushTapUITests: XCTestCase {
         XCTAssertGreaterThan(gets("/v1/blockers"), before, "the open list did not read again")
         XCTAssertFalse(banner.waitForExistence(timeout: 5), "a banner while the list is on screen")
 
-        app.buttons["Done"].tap()
+        app.buttons["Panes"].tap() // Blockers is a screen of the bottom bar: back to Panes
         XCTAssertTrue(element("eng1 pinned").waitForExistence(timeout: 5))
         try deliver(Self.beadPush)
         XCTAssertTrue(banner.waitForExistence(timeout: 15), "no banner for a bead push away from the list")

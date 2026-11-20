@@ -26,23 +26,48 @@ struct BlockersView: View {
         }
     }
 
+    /// active is the rigs with something to say; quiet is the names of the rest,
+    /// which share one line so that silence takes no room.
+    private var active: [BlockerSection] { blockers.sections.filter { $0.rows.contains { $0.kind != .quiet } } }
+    private var quiet: [String] { blockers.sections.filter { !$0.rows.contains { $0.kind != .quiet } }.map(\.rig) }
+
     private var list: some View {
         List {
-            if blockers.loaded && blockers.sections.isEmpty {
-                Text("No rig is running.")
-                    .foregroundStyle(.secondary)
-            }
-            if let problem = blockers.problem {
-                Text(problem).foregroundStyle(.red)
-            }
-            ForEach(blockers.sections) { section in
-                Section(section.rig) {
-                    ForEach(section.rows) { row in
-                        BlockerRowView(row: row, open: open).id(row.id)
+            Group {
+                if blockers.loaded && blockers.sections.isEmpty {
+                    Text("No rig is running.").font(Theme.mono(.footnote)).foregroundStyle(Theme.dim)
+                }
+                if let problem = blockers.problem {
+                    Text(problem).font(Theme.mono(.footnote)).foregroundStyle(Theme.red)
+                }
+                if blockers.loaded && !blockers.sections.isEmpty && active.isEmpty {
+                    Text("✓ Nothing waits on you. Nothing is stuck.")
+                        .font(Theme.mono(.subheadline)).foregroundStyle(Theme.green)
+                        .accessibilityIdentifier("blockers-clear")
+                }
+                ForEach(active) { section in
+                    Section {
+                        ForEach(section.rows) { row in
+                            BlockerRowView(row: row, open: open).id(row.id)
+                        }
+                    } header: {
+                        Text(section.rig).font(Theme.mono(.caption, .bold)).foregroundStyle(Theme.soft).textCase(nil)
                     }
                 }
+                if !quiet.isEmpty {
+                    Text("quiet: \(quiet.joined(separator: ", "))")
+                        .font(Theme.mono(.caption)).foregroundStyle(Theme.dim)
+                        .listRowSeparator(.hidden)
+                        .accessibilityIdentifier("blockers-quiet")
+                }
             }
+            .listRowBackground(Theme.bg)
+            .listRowSeparatorTint(Theme.line)
+            .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("Blockers")
         .refreshable { await blockers.reload() }
         .task { await blockers.reload() }
@@ -90,33 +115,38 @@ struct BlockerRowView: View {
 
     private var content: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: icon).foregroundStyle(tint)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.title).foregroundStyle(row.kind == .quiet ? .secondary : .primary)
+            Text(mark).font(Theme.mono(.callout, .bold)).foregroundStyle(tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(row.title).font(Theme.mono(.callout, row.kind == .quiet ? .regular : .semibold))
+                    .foregroundStyle(row.kind == .quiet ? Theme.dim : Theme.bright)
                 if row.kind == .waiting, let pane = row.pane {
-                    Text(pane).font(.caption).foregroundStyle(.secondary)
+                    (Text(pane) + Text(row.bead.map { " · \($0)" } ?? "") + Text(" · \(row.rig)"))
+                        .font(Theme.mono(.caption)).foregroundStyle(Theme.dim)
                 }
                 if let detail = row.detail {
                     Text(row.kind == .waiting ? "Recommendation: \(detail)" : detail)
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(Theme.mono(.footnote)).foregroundStyle(Theme.soft)
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var icon: String {
+    /// mark is the row's sign: a question waiting on him, a pane that is stuck.
+    private var mark: String {
         switch row.kind {
-        case .waiting: "person.fill.questionmark"
-        case .stuck: "exclamationmark.triangle.fill"
-        case .quiet: "checkmark.circle"
+        case .waiting: "?"
+        case .stuck: "!"
+        case .quiet: "✓"
         }
     }
 
     private var tint: Color {
         switch row.kind {
-        case .waiting: .blue
-        case .stuck: .orange
-        case .quiet: .green
+        case .waiting: Theme.orange
+        case .stuck: Theme.red
+        case .quiet: Theme.green
         }
     }
 }

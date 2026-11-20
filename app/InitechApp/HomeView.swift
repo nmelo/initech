@@ -9,8 +9,8 @@ struct MainView: View {
     @ObservedObject var push: PushRegistrar
     @ObservedObject var inbox: PushInbox
     let forget: () -> Void
-    @State private var showRigs = false
-    @State private var showBlockers = false
+    /// tab is the screen the list side shows, chosen in its bottom bar.
+    @State private var tab: ListTab = .panes
     @State private var showProgress = false
     @State private var blockersFocus: BlockerFocus?
     /// opened is false until home's first reload, before which a tap that
@@ -24,8 +24,8 @@ struct MainView: View {
         // hidden. On iPad the list always sits beside the pane (balanced, all
         // columns): with no bar there is no button to bring a hidden list back.
         NavigationSplitView(columnVisibility: .constant(.all)) {
-            HomeList(home: home, push: push, inbox: inbox, showRigs: $showRigs, showBlockers: $showBlockers,
-                     showProgress: $showProgress, besideThePane: sizeClass == .regular)
+            HomeList(home: home, push: push, inbox: inbox, tab: $tab, showProgress: $showProgress,
+                     blockersFocus: blockersFocus, besideThePane: sizeClass == .regular)
                 .toolbar(.hidden, for: .navigationBar)
         } detail: {
             if let ref = home.selection {
@@ -41,9 +41,6 @@ struct MainView: View {
         .navigationSplitViewStyle(.balanced)
         .tint(Theme.red)
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showBlockers) {
-            NavigationStack { BlockersScreen(home: home, focus: blockersFocus, arrived: inbox.arrived) }
-        }
         .sheet(isPresented: $showProgress) {
             NavigationStack { ProgressScreen(home: home) }
         }
@@ -74,8 +71,9 @@ extension MainView {
     /// screen is what is on screen for the push rule: a sheet over
     /// everything, else the open pane.
     var screen: OnScreen {
-        if showBlockers { return .waitingList }
-        if showRigs || showProgress { return .other }
+        if showProgress { return .other }
+        if tab == .blockers { return .waitingList }
+        if tab == .rigs { return .other }
         return home.selection.map { .pane($0) } ?? .other
     }
 
@@ -84,14 +82,13 @@ extension MainView {
     /// push with no data.
     func open(_ route: PushRoute) async {
         inbox.tapped = nil
-        showRigs = false
         showProgress = false
         switch route {
         case .home:
-            showBlockers = false
+            tab = .panes
             home.selection = nil
         case .pane(let ref):
-            showBlockers = false
+            tab = .panes
             if !home.hasPane(ref) { await home.reload() }
             if home.hasPane(ref) {
                 home.open(ref)
@@ -101,7 +98,7 @@ extension MainView {
             }
         case let .bead(rig, bead):
             blockersFocus = BlockerFocus(rig: rig, bead: bead)
-            showBlockers = true
+            tab = .blockers
         }
     }
 }
@@ -111,14 +108,20 @@ extension MainView {
     /// open(debug:) takes a debug launch to the screen it named.
     func open(debug screen: DebugScreen) {
         switch screen {
-        case .rigs: showRigs = true
-        case .blockers: showBlockers = true
+        case .rigs: tab = .rigs
+        case .blockers: tab = .blockers
         case .progress: showProgress = true
         case let .pane(rig, pane): home.open(PaneRef(rig: rig, pane: pane))
         }
     }
 }
 #endif
+
+/// ListTab is a screen of the list side's bottom bar; its name is what the
+/// prompt header shows.
+enum ListTab: String, Equatable {
+    case panes, rigs, blockers
+}
 
 /// HomeList is the list side of the app, drawn as a terminal would: a prompt
 /// line on top, then one of two screens chosen in the bar of numbered keys at
@@ -129,9 +132,10 @@ struct HomeList: View {
     @ObservedObject var home: HomeModel
     @ObservedObject var push: PushRegistrar
     @ObservedObject var inbox: PushInbox
-    @Binding var showRigs: Bool
-    @Binding var showBlockers: Bool
+    @Binding var tab: ListTab
     @Binding var showProgress: Bool
+    /// blockersFocus is the rig and bead a tapped push named, for Blockers to show.
+    var blockersFocus: BlockerFocus?
     let besideThePane: Bool
     @State private var renaming: PaneRow?
     @State private var newName = ""
@@ -139,7 +143,11 @@ struct HomeList: View {
 
     var body: some View {
         Group {
-            if showRigs { rigsList } else { panesList }
+            switch tab {
+            case .panes: panesList
+            case .rigs: rigsList
+            case .blockers: BlockersScreen(home: home, focus: blockersFocus, arrived: inbox.arrived)
+            }
         }
         .background(Theme.bg.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) { header }
@@ -168,7 +176,7 @@ struct HomeList: View {
                         .accessibilityIdentifier("push-notice")
                 }
                 if home.showsNoPinsLine {
-                    Button("No pinned panes yet. Pin one from Rigs.") { showRigs = true }
+                    Button("No pinned panes yet. Pin one from Rigs.") { tab = .rigs }
                         .font(Theme.mono(.footnote))
                 }
                 ForEach(home.rows) { row in
@@ -204,11 +212,11 @@ struct HomeList: View {
     private var header: some View {
         HStack(spacing: 0) {
             Text("initech").font(Theme.mono(.subheadline, .bold)).foregroundStyle(Theme.bright)
-            Text(showRigs ? " ❯ rigs" : " ❯ panes").font(Theme.mono(.subheadline)).foregroundStyle(Theme.text)
+            Text(" ❯ \(tab.rawValue)").font(Theme.mono(.subheadline)).foregroundStyle(Theme.text)
             Rectangle().fill(Theme.red).frame(width: 9, height: 17).padding(.leading, 6)
                 .accessibilityHidden(true)
             Spacer()
-            if !showRigs {
+            if tab == .panes {
                 Button(editMode.isEditing ? "done" : "edit") {
                     withAnimation { editMode = editMode.isEditing ? .inactive : .active }
                 }
@@ -225,40 +233,44 @@ struct HomeList: View {
         .accessibilityAddTraits(.isHeader)
     }
 
+    /// key is one screen's key in the bottom bar, red while its screen shows.
+    private func key(_ screen: ListTab, _ label: String, spoken: String, count: Int = 0) -> some View {
+        Button { tab = screen; editMode = .inactive } label: {
+            HStack(spacing: 5) {
+                Text(label)
+                if count > 0 {
+                    Text("\(count)").fontWeight(.bold).foregroundStyle(Theme.bg)
+                        .padding(.horizontal, 5).background(Theme.red, in: RoundedRectangle(cornerRadius: 4))
+                }
+            }
+            .foregroundStyle(tab == screen ? Theme.red : Theme.soft)
+            .fontWeight(tab == screen ? .semibold : .regular)
+            .fixedSize()
+        }
+        .accessibilityLabel(spoken)
+        .accessibilityAddTraits(tab == screen ? .isSelected : [])
+    }
+
     /// keys is the bottom bar: the screens, as numbered keys. It sits below the
     /// list, never over it.
     private var keys: some View {
         HStack(spacing: 0) {
-            Button("1 panes") { showRigs = false; editMode = .inactive }
-                .foregroundStyle(showRigs ? Theme.soft : Theme.red).fontWeight(showRigs ? .regular : .semibold)
-                .accessibilityLabel("Panes")
-                .accessibilityAddTraits(showRigs ? [] : .isSelected)
+            key(.panes, "1 panes", spoken: "Panes")
             Spacer()
-            Button("2 rigs") { showRigs = true; editMode = .inactive }
-                .foregroundStyle(showRigs ? Theme.red : Theme.soft).fontWeight(showRigs ? .semibold : .regular)
-                .accessibilityLabel("Rigs")
-                .accessibilityAddTraits(showRigs ? .isSelected : [])
+            key(.rigs, "2 rigs", spoken: "Rigs")
             Spacer()
-            Button { showBlockers = true } label: {
-                HStack(spacing: 5) {
-                    Text("3 blockers")
-                    if !home.waiting.isEmpty {
-                        Text("\(home.waiting.count)").fontWeight(.bold).foregroundStyle(Theme.bg)
-                            .padding(.horizontal, 5).background(Theme.red, in: RoundedRectangle(cornerRadius: 4))
-                    }
-                }
-            }
-            .accessibilityLabel("Blockers")
+            key(.blockers, "3 blockers", spoken: "Blockers", count: home.blockerCount)
             Spacer()
             Button("4 progress") { showProgress = true }
+                .fixedSize()
                 .accessibilityLabel("Progress")
         }
-        .font(Theme.mono(.footnote))
+        // Beside the pane the list is a narrow column: smaller type, so no key is cut short.
+        .font(Theme.mono(besideThePane ? .caption2 : .footnote))
         .lineLimit(1)
-        .minimumScaleFactor(0.75)
         .buttonStyle(.plain)
         .foregroundStyle(Theme.soft)
-        .padding(.horizontal, 16).padding(.top, 13).padding(.bottom, 6)
+        .padding(.horizontal, besideThePane ? 10 : 16).padding(.top, 13).padding(.bottom, 6)
         .background(Theme.bar.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
     }

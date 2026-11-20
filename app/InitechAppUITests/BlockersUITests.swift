@@ -55,7 +55,7 @@ final class BlockersUITests: XCTestCase {
         XCTAssertTrue(element("Your go for the patch release").waitForExistence(timeout: 10))
         XCTAssertTrue(element("Recommendation: ship it, it is small").exists)
         XCTAssertTrue(element("permission prompt open").exists)
-        XCTAssertTrue(element("Nothing waiting, nothing stuck").exists, "the quiet rig has no quiet row")
+        XCTAssertTrue(element("quiet: theguy").exists, "the quiet rig is not named on the quiet line")
 
         try waitForFeed()
         server.setRawGET("blockers", blockers(#",{"pane":"super","text":"Keep the old link?","recommendation":""}"#))
@@ -77,7 +77,10 @@ final class BlockersUITests: XCTestCase {
 
         app.buttons["blocker-initech-super"].firstMatch.tap()
         XCTAssertTrue(element("The reply behind the blocker").waitForExistence(timeout: 10), "the tap did not open the pane")
-        XCTAssertFalse(app.buttons["blocker-initech-eng6"].exists, "the sheet stayed open over the pane")
+        // On iPhone the pane covers the list; on iPad Blockers stays beside the pane.
+        if UIDevice.current.userInterfaceIdiom != .pad {
+            XCTAssertFalse(app.buttons["blocker-initech-eng6"].exists, "Blockers stayed on screen over the pane")
+        }
     }
 
     // AC3: the Progress button shows the service's numbers, and Done closes it.
