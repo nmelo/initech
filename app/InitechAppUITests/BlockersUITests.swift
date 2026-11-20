@@ -42,9 +42,20 @@ final class BlockersUITests: XCTestCase {
 
     private func launch() {
         app = XCUIApplication()
-        app.launchArguments = ["-uitest-pairing", server.pairingURL]
+        // The permission answer is given: see PaneFlowUITests.launch.
+        app.launchArguments = ["-uitest-pairing", server.pairingURL, "-uitest-push-permission", "allowed"]
         app.launch()
-        XCTAssertTrue(element("eng6 on the app").waitForExistence(timeout: 20), "home did not show the pins")
+        if !element("eng6 on the app").waitForExistence(timeout: 20) { XCTFail("home did not show the pins. \(onScreen())") }
+    }
+
+    /// onScreen says what the app and iOS show, for a failure's message: a test
+    /// that cannot find home says whether it met the lock screen, an alert of
+    /// the app's or a question of iOS's.
+    private func onScreen() -> String {
+        let alert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        let ios = alert.exists ? "iOS asks: \(alert.label). " : ""
+        let words = (app.staticTexts.allElementsBoundByIndex + app.buttons.allElementsBoundByIndex).prefix(14).map { $0.label }
+        return ios + "The app shows: " + words.filter { !$0.isEmpty }.joined(separator: " | ")
     }
 
     // AC1, AC2: both kinds show with their words; an item comes and goes on

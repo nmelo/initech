@@ -60,9 +60,22 @@ final class PaneFlowUITests: XCTestCase {
 
     private func launch() {
         app = XCUIApplication()
-        app.launchArguments = ["-uitest-pairing", link]
+        // The permission answer is given, as in the screenshot test: with none, iOS's own
+        // question about notifications comes up on a fresh simulator and stays until answered,
+        // and under it the app is not in front, so it stays on its lock screen.
+        app.launchArguments = ["-uitest-pairing", link, "-uitest-push-permission", "allowed"]
         app.launch()
-        XCTAssertTrue(app.buttons["Rigs"].waitForExistence(timeout: 30), "home did not open")
+        if !app.buttons["Rigs"].waitForExistence(timeout: 30) { XCTFail("home did not open. \(onScreen())") }
+    }
+
+    /// onScreen says what the app and iOS show, for a failure's message: a test
+    /// that cannot find home says whether it met the lock screen, an alert of
+    /// the app's or a question of iOS's.
+    private func onScreen() -> String {
+        let alert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        let ios = alert.exists ? "iOS asks: \(alert.label). " : ""
+        let words = (app.staticTexts.allElementsBoundByIndex + app.buttons.allElementsBoundByIndex).prefix(14).map { $0.label }
+        return ios + "The app shows: " + words.filter { !$0.isEmpty }.joined(separator: " | ")
     }
 
     private func element(_ text: String) -> XCUIElement {
