@@ -458,9 +458,9 @@ func TestDND_NothingIsSurfacedWhileItHolds(t *testing.T) {
 // Held at once: a send to a pane in do-not-disturb does not first wait for a
 // booting agent to settle.
 func TestDND_HeldAtOnceWithoutTheStartupWait(t *testing.T) {
-	old := startupSettleStable
-	startupSettleStable = 3 * time.Second
-	t.Cleanup(func() { startupSettleStable = old })
+	old, oldCap := settleStable(), settleCap()
+	setSettleClock(3*time.Second, oldCap)
+	t.Cleanup(func() { setSettleClock(old, oldCap) })
 	p, _, _ := dndPane(t, "a")
 	p.startupSettled = false
 	p.startedAt = time.Now()

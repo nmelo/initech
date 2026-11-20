@@ -20,9 +20,9 @@ import (
 // i35wGateClock shortens the gate for a test and restores it.
 func i35wGateClock(t *testing.T, stable, cap time.Duration) {
 	t.Helper()
-	oldStable, oldCap := startupSettleStable, startupSettleCap
-	startupSettleStable, startupSettleCap = stable, cap
-	t.Cleanup(func() { startupSettleStable, startupSettleCap = oldStable, oldCap })
+	oldStable, oldCap := settleStable(), settleCap()
+	setSettleClock(stable, cap)
+	t.Cleanup(func() { setSettleClock(oldStable, oldCap) })
 }
 
 // i35wFreshPane is a pane whose process "just started", with its PTY replaced

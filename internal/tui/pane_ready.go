@@ -29,7 +29,7 @@ func (p *Pane) whenReady(key string, now time.Time, fn func()) bool {
 
 // openStartupGate is the maintenance tick's read of the startup gate,
 // without awaitStartupSettled's wait: a pane that has been quiet for
-// startupSettleStable, or started more than startupGateWindow ago, is
+// settleStable(), or started more than startupGateWindow ago, is
 // settled. It runs what waits on readiness and reports whether it opened.
 func (p *Pane) openStartupGate(now time.Time) bool {
 	if p.agentReader() != noAgentReader || !p.hasPTY() {
@@ -44,7 +44,7 @@ func (p *Pane) openStartupGate(now time.Time) bool {
 		return false
 	}
 	last := p.LastOutputTime()
-	quiet := !last.IsZero() && !last.Before(started) && now.Sub(last) >= startupSettleStable
+	quiet := !last.IsZero() && !last.Before(started) && now.Sub(last) >= settleStable()
 	if !quiet && now.Sub(started) < startupGateWindow {
 		return false
 	}
@@ -75,10 +75,11 @@ func (p *Pane) holdWhileStarting(text string, enter bool, o sendOrigin) SendVerd
 }
 
 // waitUntilReady waits, at most max, for the pane to stop reading starting:
-// the child quiet for startupSettleStable (this opens the gate), or the gate
+// the child quiet for settleStable() (this opens the gate), or the gate
 // opened elsewhere (the maintenance tick, a send's wait). It reports false at
 // max, or when the pane closes, still starting.
 func (p *Pane) waitUntilReady(max time.Duration) bool {
+	stable := settleStable()
 	deadline := time.Now().Add(max)
 	for {
 		now := time.Now()
@@ -88,11 +89,8 @@ func (p *Pane) waitUntilReady(max time.Duration) bool {
 		p.mu.Lock()
 		started := p.startedAt
 		p.mu.Unlock()
-		if last := p.LastOutputTime(); !last.IsZero() && !last.Before(started) && now.Sub(last) >= startupSettleStable {
-			p.mu.Lock()
-			p.startupSettled = true
-			p.mu.Unlock()
-			p.runReadyWaiters()
+		if last := p.LastOutputTime(); !last.IsZero() && !last.Before(started) && now.Sub(last) >= stable {
+			p.openGateNow()
 			return true
 		}
 		if !now.Before(deadline) {
@@ -104,6 +102,14 @@ func (p *Pane) waitUntilReady(max time.Duration) bool {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+}
+
+// openGateNow opens the pane's startup gate and runs what waits on it.
+func (p *Pane) openGateNow() {
+	p.mu.Lock()
+	p.startupSettled = true
+	p.mu.Unlock()
+	p.runReadyWaiters()
 }
 
 // runReadyWaiters runs and clears what waits on readiness, each off the

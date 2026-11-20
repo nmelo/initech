@@ -17,9 +17,6 @@ import (
 // seen quiet.
 func startingPane(t *testing.T, name string) (*Pane, func() string) {
 	t.Helper()
-	// A booting agent: never quiet long enough to settle within the test's
-	// span (the bubble's clock), so it reads starting until the gate opens.
-	i35wGateClock(t, time.Hour, 10*time.Minute)
 	p, _, typed := dndPane(t, name)
 	p.receipts = newReceiptBook()
 	p.mu.Lock()
@@ -34,6 +31,15 @@ func startingPane(t *testing.T, name string) (*Pane, func() string) {
 	return p, typed
 }
 
+// bootingClock makes a starting pane a booting agent for the test's span
+// (the bubble's clock): never quiet long enough to settle, and a drain's
+// bounded wait longer than the test. Set once, first, before any pane, so no
+// drain reads it while it changes.
+func bootingClock(t *testing.T) {
+	t.Helper()
+	i35wGateClock(t, time.Hour, 10*time.Minute)
+}
+
 // settleFor lets the drains run on the bubble's clock.
 func settleFor(p *Pane) {
 	for i := 0; i < 40; i++ {
@@ -45,6 +51,7 @@ func settleFor(p *Pane) {
 // with the held line and its receipt, exit 0, and nothing is typed.
 func TestStartingSend_IsHeldWithAReceipt(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
+		bootingClock(t)
 		p, typed := startingPane(t, "a")
 		tu := newTestTUI(p)
 		r := dndSend(t, tu, "eng1", false, "[from eng1] hello")
@@ -65,6 +72,7 @@ func TestStartingSend_IsHeldWithAReceipt(t *testing.T) {
 // AC1: from a second window (the forwarded send) and through initech serve.
 func TestStartingSend_IsHeldFromASecondWindowAndThroughServe(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
+		bootingClock(t)
 		p, _ := startingPane(t, "a")
 		tu := newTestTUI(p)
 		v, err := tu.deliverForwardedSend("a", "[from eng1] far", true, sendOrigin{From: "eng1"})
@@ -84,6 +92,7 @@ func TestStartingSend_IsHeldFromASecondWindowAndThroughServe(t *testing.T) {
 // AC1: the held send is in the held file.
 func TestStartingSend_IsInTheHeldFile(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
+		bootingClock(t)
 		p, _ := startingPane(t, "a")
 		path := filepath.Join(t.TempDir(), "held.yaml")
 		w := &heldWriter{path: path, panes: map[*Pane][]heldEntry{}, ready: true}
@@ -101,6 +110,7 @@ func TestStartingSend_IsInTheHeldFile(t *testing.T) {
 // (a --delivered watch fires on that).
 func TestStartingSend_IsTypedOnceReadyInOrder(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
+		bootingClock(t)
 		p, typed := startingPane(t, "a")
 		p.enqueue(QueuedMessage{Text: "[from b] earlier", Enter: true, Time: time.Now(), From: "b"})
 		v := p.holdWhileStarting("[from eng1] later", true, sendOrigin{From: "eng1"})
@@ -127,6 +137,7 @@ func TestStartingSend_IsTypedOnceReadyInOrder(t *testing.T) {
 // AC4: --withdraw removes a starting hold, and only its sender can.
 func TestStartingSend_WithdrawRemovesIt(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
+		bootingClock(t)
 		p, _ := startingPane(t, "a")
 		v := p.holdWhileStarting("[from eng1] oops", true, sendOrigin{From: "eng1"})
 		if _, err := p.withdrawReceipt(v.Receipt, "eng2"); err == nil {
@@ -142,6 +153,7 @@ func TestStartingSend_WithdrawRemovesIt(t *testing.T) {
 // is then held), and still refuses a stopped one.
 func TestStartingSend_AssignsReadyCheckHoldsAndRefusesStopped(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
+		bootingClock(t)
 		p, _ := startingPane(t, "a")
 		tu := newTestTUI(p)
 		ready := func() IPCResponse {
@@ -163,6 +175,7 @@ func TestStartingSend_AssignsReadyCheckHoldsAndRefusesStopped(t *testing.T) {
 // typed exactly once, once the new pane is ready.
 func TestStartingSend_ARestartDeliversItOnce(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
+		bootingClock(t)
 		p, _ := startingPane(t, "a")
 		v := p.holdWhileStarting("[from eng1] across", true, sendOrigin{From: "eng1"})
 		entry := heldEntryOf("a", dndQueue(p)[0], heldStateHeld)
@@ -202,22 +215,21 @@ func TestStartingSend_ASettledPaneIsTypedAtOnceAndAStoppedOneRefused(t *testing.
 	})
 }
 
-// R1: a pane still noisy when the drain's bounded wait runs out keeps the
-// line held; the gate opening (the maintenance tick, at the window at the
-// latest) types it, through the readiness waiter.
-func TestStartingSend_ANoisyPanePastTheCapIsTypedWhenTheGateOpens(t *testing.T) {
+// R1: a pane still noisy (or silent) when the drain's bounded wait runs out:
+// the drain opens the gate and types it, as the send path always did at that
+// bound; never before the gate is open.
+func TestStartingSend_APaneNeverQuietIsTypedAtTheBoundWithTheGateOpen(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
+		i35wGateClock(t, time.Hour, 3*time.Second) // a short bound, set once, first
 		p, typed := startingPane(t, "a")
-		i35wGateClock(t, time.Hour, 200*time.Millisecond) // the drain gives up fast
 		p.holdWhileStarting("[from eng1] patient", true, sendOrigin{From: "eng1"})
-		settleFor(p)
-		if typed() != "" || p.QueueLen() != 1 {
-			t.Fatalf("typed %q queue %d before the gate opened", typed(), p.QueueLen())
+		time.Sleep(time.Second)
+		if typed() != "" || p.QueueLen() != 1 || !p.startingNow(time.Now()) {
+			t.Fatalf("typed %q queue %d before the bound", typed(), p.QueueLen())
 		}
-		p.openStartupGate(time.Now().Add(startupGateWindow))
-		settleFor(p)
-		if strings.Count(typed(), "patient") != 1 {
-			t.Fatalf("typed %q, want it once the gate opened", typed())
+		time.Sleep(5 * time.Second) // past the bound: the drain opens the gate
+		if strings.Count(typed(), "patient") != 1 || p.startingNow(time.Now()) {
+			t.Fatalf("typed %q, want it once at the bound, with the gate open", typed())
 		}
 	})
 }
