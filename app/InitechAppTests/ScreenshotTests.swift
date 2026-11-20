@@ -18,7 +18,7 @@ final class ScreenshotTests: XCTestCase {
 
         let b = try await shot("blockers", NavigationStack { BlockersView(blockers: blockers) { _, _ in } })
         XCTAssertTrue(blockers.loaded, "the view read its model")
-        XCTAssertEqual(blockers.sections.map(\.rig), ["initech", "theguy"])
+        XCTAssertEqual(blockers.sections.map(\.rig), ["initech", "rig-b"])
         let p = try await shot("progress", NavigationStack { EffortProgressView(progress: progress) })
         XCTAssertEqual(progress.cards.count, 1)
         XCTAssertFalse(b.isEmpty || p.isEmpty)
@@ -64,5 +64,5 @@ let shotBlockersJSON = """
 [{"rig":"initech","waiting":[{"pane":"super","text":"Your go for the v2.50 patch release","recommendation":"ship it: two fixes, both QA passed"},\
 {"pane":"super","text":"Keep the old pairing link working for a week?","recommendation":""}],\
 "stuck":[{"pane":"eng4","reason":"permission prompt open"},{"pane":"eng2","reason":"ini-a1 quiet 1h40m, its owner idle"}],"quiet":false},\
-{"rig":"theguy","waiting":[],"stuck":[],"quiet":true}]
+{"rig":"rig-b","waiting":[],"stuck":[],"quiet":true}]
 """

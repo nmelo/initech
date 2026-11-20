@@ -29,7 +29,7 @@ final class PushTapUITests: XCTestCase {
             $0 == "fx-1" ? #"{"pane":"super","text":"Approve the v2.55 release","recommendation":"","bead":"fx-1"}"#
                          : #"{"pane":"","text":"Pick the app icon","recommendation":"","bead":"fx-2"}"#
         }
-        return #"[{"rig":"theguy","waiting":[],"stuck":[],"quiet":true},{"rig":"initech","waiting":["# + waiting.joined(separator: ",")
+        return #"[{"rig":"rig-b","waiting":[],"stuck":[],"quiet":true},{"rig":"initech","waiting":["# + waiting.joined(separator: ",")
             + #"],"stuck":[{"pane":"eng1","reason":"permission prompt open"}],"quiet":false}]"#
     }
 

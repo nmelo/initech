@@ -47,8 +47,8 @@ final class OperatorScreensTests: XCTestCase {
     // AC1: tapping a blocker opens its pane.
     func testATapOpensThePane() {
         let home = HomeModel(service: service)
-        home.openBlocker(rig: "theguy", pane: "super")
-        XCTAssertEqual(home.selection, PaneRef(rig: "theguy", pane: "super"))
+        home.openBlocker(rig: "rig-b", pane: "super")
+        XCTAssertEqual(home.selection, PaneRef(rig: "rig-b", pane: "super"))
     }
 
     // Reachability: the app's real service serves both views, and reads

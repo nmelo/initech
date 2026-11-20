@@ -93,7 +93,7 @@ final class ServiceClientTests: XCTestCase {
     }
 
     func testSavePins_ReplacesTheListOnTheMac() async throws {
-        let pins = [Pin(rig: "initech", pane: "super", name: "hover super", order: 0)]
+        let pins = [Pin(rig: "initech", pane: "super", name: "rig-a super", order: 0)]
         try await service.savePins(pins)
         XCTAssertEqual(server.pins, pins)
         let again = try await service.pins()

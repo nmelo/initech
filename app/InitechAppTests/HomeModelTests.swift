@@ -14,11 +14,11 @@ final class HomeModelTests: XCTestCase {
         server.status = StatusReply(rigs: [
             Fx.rig("initech", [Fx.agent("super", state: "running", beads: ["ini-r0q"], context: 65),
                                Fx.agent("eng6", state: "idle", beads: [], context: 12)]),
-            Fx.rig("theguy", [Fx.agent("super", state: "waiting", beads: nil, context: nil, banner: "dialog",
+            Fx.rig("rig-b", [Fx.agent("super", state: "waiting", beads: nil, context: nil, banner: "dialog",
                                        screen: ["Do you want to proceed?", "❯ 1. Yes", "  2. No"])]),
         ])
-        server.pins = [Pin(rig: "theguy", pane: "super", name: "theguy", order: 1),
-                       Pin(rig: "initech", pane: "super", name: "hover super", order: 0)]
+        server.pins = [Pin(rig: "rig-b", pane: "super", name: "rig-b", order: 1),
+                       Pin(rig: "initech", pane: "super", name: "rig-a super", order: 0)]
     }
 
     override func tearDown() { server.stop() }
@@ -26,7 +26,7 @@ final class HomeModelTests: XCTestCase {
     func testHome_ListsPinsInHisOrderWithNameStateContextAndBead() async {
         let home = HomeModel(service: service)
         await home.reload()
-        XCTAssertEqual(home.rows.map(\.name), ["hover super", "theguy"])
+        XCTAssertEqual(home.rows.map(\.name), ["rig-a super", "rig-b"])
         let first = home.rows[0]
         XCTAssertEqual(first.stateLabel, "working")
         XCTAssertEqual(first.contextPercent, 65)
@@ -94,12 +94,12 @@ final class HomeModelTests: XCTestCase {
     func testRigs_ListsOnlyUnpinnedPanes_AndOneTapPins() async {
         let home = HomeModel(service: service)
         await home.reload()
-        XCTAssertEqual(home.rigRows.map(\.rig), ["initech", "theguy"])
+        XCTAssertEqual(home.rigRows.map(\.rig), ["initech", "rig-b"])
         XCTAssertEqual(home.rigRows[0].panes.map(\.ref.pane), ["eng6"])
         XCTAssertEqual(home.rigRows[1].panes.count, 0)
         await home.pin(PaneRef(rig: "initech", pane: "eng6"))
         XCTAssertEqual(server.pins.last, Pin(rig: "initech", pane: "eng6", name: "eng6", order: 2))
-        XCTAssertEqual(home.rows.map(\.name), ["hover super", "theguy", "eng6"])
+        XCTAssertEqual(home.rows.map(\.name), ["rig-a super", "rig-b", "eng6"])
     }
 
     func testPinRenameReorder_PersistOnTheMac_AndASecondDeviceSeesTheSame() async {
@@ -108,11 +108,11 @@ final class HomeModelTests: XCTestCase {
         await phone.pin(PaneRef(rig: "initech", pane: "eng6"))
         await phone.rename(PaneRef(rig: "initech", pane: "eng6"), to: "  eng6 on the app  ")
         await phone.move(from: IndexSet(integer: 2), to: 0)
-        XCTAssertEqual(phone.rows.map(\.name), ["eng6 on the app", "hover super", "theguy"])
+        XCTAssertEqual(phone.rows.map(\.name), ["eng6 on the app", "rig-a super", "rig-b"])
 
         let ipad = HomeModel(service: HTTPService(pairing: server.pairing))
         await ipad.reload()
-        XCTAssertEqual(ipad.rows.map(\.name), ["eng6 on the app", "hover super", "theguy"])
+        XCTAssertEqual(ipad.rows.map(\.name), ["eng6 on the app", "rig-a super", "rig-b"])
         XCTAssertEqual(server.pins.map(\.order), [0, 1, 2])
     }
 
@@ -120,14 +120,14 @@ final class HomeModelTests: XCTestCase {
         let home = HomeModel(service: service)
         await home.reload()
         await home.rename(PaneRef(rig: "initech", pane: "super"), to: "   ")
-        XCTAssertEqual(home.rows[0].name, "hover super")
+        XCTAssertEqual(home.rows[0].name, "rig-a super")
     }
 
     func testUnpin_RemovesTheRowOnTheMac() async {
         let home = HomeModel(service: service)
         await home.reload()
-        await home.unpin(PaneRef(rig: "theguy", pane: "super"))
-        XCTAssertEqual(server.pins, [Pin(rig: "initech", pane: "super", name: "hover super", order: 0)])
+        await home.unpin(PaneRef(rig: "rig-b", pane: "super"))
+        XCTAssertEqual(server.pins, [Pin(rig: "initech", pane: "super", name: "rig-a super", order: 0)])
     }
 
     func testNoPins_IsAnEmptyList() async {
@@ -140,12 +140,12 @@ final class HomeModelTests: XCTestCase {
     }
 
     func testARigThatWentAway_GreysItsRows() async {
-        server.status = StatusReply(rigs: [server.status.rigs[0]]) // theguy stopped
+        server.status = StatusReply(rigs: [server.status.rigs[0]]) // rig-b stopped
         let home = HomeModel(service: service)
         await home.reload()
-        let theguy = home.rows.first { $0.ref.rig == "theguy" }
-        XCTAssertEqual(theguy?.gone, true)
-        XCTAssertEqual(theguy?.stateLabel, "gone")
+        let stopped = home.rows.first { $0.ref.rig == "rig-b" }
+        XCTAssertEqual(stopped?.gone, true)
+        XCTAssertEqual(stopped?.stateLabel, "gone")
         XCTAssertEqual(home.rows.first { $0.ref.rig == "initech" }?.gone, false)
     }
 
@@ -215,7 +215,7 @@ final class HomeModelTests: XCTestCase {
     func testListChose_APaneOpensBesideOrStacked() {
         let home = HomeModel(service: service)
         let a = PaneRef(rig: "initech", pane: "super")
-        let b = PaneRef(rig: "theguy", pane: "super")
+        let b = PaneRef(rig: "rig-b", pane: "super")
         home.listChose(a, besideThePane: false)
         XCTAssertEqual(home.selection, a)
         home.listChose(b, besideThePane: true)
