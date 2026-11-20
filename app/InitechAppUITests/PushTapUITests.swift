@@ -19,7 +19,10 @@ final class PushTapUITests: XCTestCase {
 
     /// blockers is GET /v1/blockers: footer items, then two beads waiting on
     /// Nelson (fx-2 unassigned). With no footer items every row fits on
-    /// screen; with fourteen, any screen must scroll to fx-2.
+    /// screen; with forty, any screen must scroll to fx-2: the list is a
+    /// full-height screen, a row is at least 40 points, and the tallest iPad
+    /// is 1,366 points. (Fourteen was enough only while the list was a sheet,
+    /// which on iPad is a short card; on a full-height iPad list sixteen rows fit.)
     private func blockers(listing beads: [String] = ["fx-1", "fx-2"], footer count: Int = 0) -> String {
         let footer = (0..<count).map { $0 + 1 }.map { #"{"pane":"super","text":"Footer question \#($0)","recommendation":""}"# }
         let waiting = footer + beads.map {
@@ -87,7 +90,7 @@ final class PushTapUITests: XCTestCase {
     func testATappedBeadPushOpensWaitingOnYouWithTheBeadInView() {
         // Control: opened by hand, the list starts at the top and fx-2 is out
         // of view, so only the push's scroll can bring it in.
-        server.setRawGET("blockers", blockers(footer: 14))
+        server.setRawGET("blockers", blockers(footer: 40))
         launch()
         XCTAssertTrue(element("eng1 pinned").waitForExistence(timeout: 20))
         app.buttons["Waiting"].tap()
