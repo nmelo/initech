@@ -52,20 +52,32 @@ final class AppLockTests: XCTestCase {
     func testReachingTheBackground_Locks_EveryTime_AndOnlyTheReturnAsks() async {
         let auth = ScriptedAuthenticator([true, true, true])
         let lock = AppLock(store: MemoryPairingStore(paired), authenticator: auth)
-        await lock.moved(to: .active)
+        await lock.moved(to: .active)?.value
         XCTAssertEqual(lock.screen, .unlocked(paired))
         XCTAssertEqual(auth.asked, 1)
         for trip in 1...2 {
-            await lock.moved(to: .inactive)
-            await lock.moved(to: .background)
+            await lock.moved(to: .inactive)?.value
+            await lock.moved(to: .background)?.value
             XCTAssertEqual(lock.screen, .locked, "trip \(trip): the app did not lock on reaching the background")
             XCTAssertEqual(auth.asked, trip, "trip \(trip): Face ID was asked as the app left")
-            await lock.moved(to: .inactive)
+            await lock.moved(to: .inactive)?.value
             XCTAssertEqual(auth.asked, trip, "trip \(trip): Face ID was asked before the app was back in front")
-            await lock.moved(to: .active)
+            await lock.moved(to: .active)?.value
             XCTAssertEqual(auth.asked, trip + 1, "trip \(trip): the return did not ask")
             XCTAssertEqual(lock.screen, .unlocked(paired))
         }
+    }
+
+    /// The lock is in place when the move returns, not a moment later: iOS takes
+    /// the app switcher's picture as the app reaches the background, and a lock
+    /// that ran after it would leave the app's content in that picture. This test
+    /// is not async on purpose: nothing here may need another turn of the run loop.
+    func testReachingTheBackground_LocksBeforeTheMoveReturns() throws {
+        let lock = AppLock(store: MemoryPairingStore(), authenticator: ScriptedAuthenticator([]))
+        try lock.pair(with: "initech://pair?host=h&port=1&token=t&fp=fp")
+        XCTAssertEqual(lock.screen, .unlocked(paired), "the test must start unlocked, or it shows nothing")
+        lock.moved(to: .background)
+        XCTAssertEqual(lock.screen, .locked, "the app was still unlocked when its move to the background returned")
     }
 
     /// Inactive is not background: Control Center, a banner or the app switcher
@@ -73,10 +85,10 @@ final class AppLockTests: XCTestCase {
     func testInactiveAlone_NeitherLocksNorAsks() async {
         let auth = ScriptedAuthenticator([true, true])
         let lock = AppLock(store: MemoryPairingStore(paired), authenticator: auth)
-        await lock.moved(to: .active)
-        await lock.moved(to: .inactive)
+        await lock.moved(to: .active)?.value
+        await lock.moved(to: .inactive)?.value
         XCTAssertEqual(lock.screen, .unlocked(paired), "going inactive locked the app")
-        await lock.moved(to: .active)
+        await lock.moved(to: .active)?.value
         XCTAssertEqual(auth.asked, 1, "coming back from inactive asked for Face ID")
         XCTAssertEqual(lock.screen, .unlocked(paired))
     }
@@ -86,14 +98,14 @@ final class AppLockTests: XCTestCase {
     func testTheDebugUnlockedLaunch_SkipsOnlyItsFirstAsk() async {
         let real = ScriptedAuthenticator([true, false])
         let lock = AppLock(store: MemoryPairingStore(paired), authenticator: LaunchUnlocked(then: real))
-        await lock.moved(to: .active)
+        await lock.moved(to: .active)?.value
         XCTAssertEqual(lock.screen, .unlocked(paired))
         XCTAssertEqual(real.asked, 0, "the launch itself asked Face ID")
-        await lock.moved(to: .background)
-        await lock.moved(to: .active)
+        await lock.moved(to: .background)?.value
+        await lock.moved(to: .active)?.value
         XCTAssertEqual(real.asked, 1, "the return after the launch did not go to Face ID")
-        await lock.moved(to: .background)
-        await lock.moved(to: .active)
+        await lock.moved(to: .background)?.value
+        await lock.moved(to: .active)?.value
         XCTAssertEqual(real.asked, 2)
         XCTAssertEqual(lock.screen, .locked, "Face ID said no and the app opened")
     }

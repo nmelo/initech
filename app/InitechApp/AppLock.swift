@@ -54,12 +54,19 @@ final class AppLock: ObservableObject {
         if case .unlocked = screen { screen = .locked }
     }
 
-    /// moved is the app's place on the device changing. Reaching the background
-    /// locks. Face ID is asked only once the app is back in front, once per
-    /// return: asked as the app left, its sheet came up over the home screen.
-    func moved(to phase: AppPhase) async {
+    /// moved is the app's place on the device changing. It is not async, and the
+    /// scene calls it straight from its phase change: reaching the background
+    /// locks before this returns, so the lock screen is what the app holds when
+    /// iOS takes the app switcher's picture. A lock that ran a turn later, in a
+    /// task, could leave the app's content in that picture. Only the Face ID ask
+    /// waits, for the person, so it alone runs as a task, returned for a caller
+    /// that needs its end. Face ID is asked only once the app is back in front,
+    /// once per return: asked as the app left, its sheet came up over the home screen.
+    @discardableResult
+    func moved(to phase: AppPhase) -> Task<Void, Never>? {
         if phase == .background { lock() }
-        if ask.moved(to: phase, locked: screen == .locked) { await unlock() }
+        guard ask.moved(to: phase, locked: screen == .locked) else { return nil }
+        return Task { await unlock() }
     }
 
     /// pair stores a scanned or pasted pairing code. The person just proved

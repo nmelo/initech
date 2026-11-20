@@ -31,8 +31,10 @@ struct InitechApp: App {
             RootView(lock: lock, push: delegate.push, inbox: delegate.inbox)
                 // The lock hears every move, the first included: leaving
                 // locks, and only being back in front asks for Face ID.
+                // Called here and now, never from a task: the lock must be in
+                // place before this returns (AppLock.moved).
                 .onChange(of: phase, initial: true) { _, now in
-                    Task { await lock.moved(to: AppPhase(now)) }
+                    lock.moved(to: AppPhase(now))
                 }
         }
     }
