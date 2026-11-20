@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -297,4 +298,15 @@ func shortSubmitDelays(t *testing.T) {
 		bracketedPasteSubmitDelay.set(prodBracketedPasteSubmitDelay)
 		rawSubmitDelay.set(prodRawSubmitDelay)
 	})
+}
+
+// tempProjectRoot is a plain temporary project root with its .initech folder,
+// for a test that needs a rig folder and nothing in it.
+func tempProjectRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".initech"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	return root
 }

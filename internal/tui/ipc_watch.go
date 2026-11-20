@@ -44,7 +44,7 @@ type WatchListing struct {
 // initech cron and post are, never from what the request says. "" means the
 // command ran outside any agent's pane. Tests stand in for it.
 var watchIdentify = func(t *TUI, conn net.Conn) string {
-	id, err := t.identifyPostConnection(conn)
+	id, err := t.identifyConnection(conn)
 	if err != nil {
 		return ""
 	}

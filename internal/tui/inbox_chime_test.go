@@ -18,8 +18,8 @@ import (
 	"time"
 )
 
-func chimeIdentity(agent, run string) postIdentity {
-	return postIdentity{agent: agent, runKey: run}
+func chimeIdentity(agent, run string) connIdentity {
+	return connIdentity{agent: agent, runKey: run}
 }
 
 // inboxChimeTUI is window 1 with sound on and a counting chimer.

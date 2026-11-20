@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func postPeerPID(conn net.Conn) (int, error) {
+func connPeerPID(conn net.Conn) (int, error) {
 	c, ok := conn.(*net.UnixConn)
 	if !ok {
 		return 0, fmt.Errorf("connection is not a local Unix socket")
@@ -36,7 +36,7 @@ func postPeerPID(conn net.Conn) (int, error) {
 	return pid, socketErr
 }
 
-func postParentPID(pid int) (int, error) {
+func connParentPID(pid int) (int, error) {
 	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
 		return 0, err

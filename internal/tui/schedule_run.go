@@ -54,7 +54,7 @@ type rigScheduler struct {
 	// It may hop onto the main goroutine, so it is never called from it.
 	isAgent func(string) bool
 	// identify names the agent behind an IPC connection; nil uses the
-	// connection's own identity (identifyPostConnection). Tests set it.
+	// connection's own identity (identifyConnection). Tests set it.
 	identify func(net.Conn) (string, error)
 
 	busy     atomic.Bool

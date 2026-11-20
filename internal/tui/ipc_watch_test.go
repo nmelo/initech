@@ -13,7 +13,7 @@ import (
 
 // watchTUI is a window 1 with a real watch store, a fixed clock, and the
 // connection's identity taken from the request's From (the stand-in for
-// identifyPostConnection, which needs a real pane process behind the socket).
+// identifyConnection, which needs a real pane process behind the socket).
 func watchTUI(t *testing.T, panes ...*Pane) *TUI {
 	t.Helper()
 	tui := newTestTUI(panes...)

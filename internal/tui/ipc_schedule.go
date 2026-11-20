@@ -34,7 +34,7 @@ func (t *TUI) cronCaller(conn net.Conn) (string, error) {
 	if t.sched.identify != nil {
 		return t.sched.identify(conn)
 	}
-	id, err := t.identifyPostConnection(conn)
+	id, err := t.identifyConnection(conn)
 	if err != nil {
 		return "", err
 	}

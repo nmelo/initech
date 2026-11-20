@@ -12,22 +12,22 @@ import (
 	"time"
 )
 
-func TestPostIdentity_AncestorAndRestart(t *testing.T) {
+func TestConnIdentity_AncestorAndRestart(t *testing.T) {
 	start := time.Unix(100, 0)
-	old := postIdentity{agent: "eng3", runKey: postProcessRunKey(42, start)}
+	old := connIdentity{agent: "eng3", runKey: connProcessRunKey(42, start)}
 	parent := func(pid int) (int, error) { return map[int]int{200: 100, 100: 42}[pid], nil }
-	got, err := identifyPostAncestor(200, []postPaneProcess{{42, old}}, parent)
+	got, err := identifyAncestor(200, []connPaneProcess{{42, old}}, parent)
 	if err != nil || got != old {
 		t.Fatalf("identity = %+v, %v", got, err)
 	}
 	// A different CLI process inside the same pane is the SAME run.
-	got, err = identifyPostAncestor(100, []postPaneProcess{{42, old}}, parent)
+	got, err = identifyAncestor(100, []connPaneProcess{{42, old}}, parent)
 	if err != nil || got != old {
 		t.Fatalf("second command = %+v, %v", got, err)
 	}
 	// Restarting the pane changes its run even when the OS recycles the PID.
-	next := postIdentity{agent: "eng3", runKey: postProcessRunKey(42, start.Add(time.Minute))}
-	got, err = identifyPostAncestor(200, []postPaneProcess{{42, next}}, parent)
+	next := connIdentity{agent: "eng3", runKey: connProcessRunKey(42, start.Add(time.Minute))}
+	got, err = identifyAncestor(200, []connPaneProcess{{42, next}}, parent)
 	if err != nil || got.runKey == old.runKey || got.agent != old.agent {
 		t.Fatalf("restarted identity = %+v, %v", got, err)
 	}
@@ -39,26 +39,26 @@ func TestPostIdentity_AncestorAndRestart(t *testing.T) {
 	}
 }
 
-func TestPostIdentity_UnrelatedAndCyclicProcessesRefused(t *testing.T) {
+func TestConnIdentity_UnrelatedAndCyclicProcessesRefused(t *testing.T) {
 	t.Setenv("INITECH_AGENT", "eng3")
 	for _, parent := range []func(int) (int, error){
 		func(int) (int, error) { return 1, nil },
 		func(pid int) (int, error) { return pid, nil },
 	} {
-		_, err := identifyPostAncestor(200, []postPaneProcess{{42, postIdentity{"eng3", "run"}}}, parent)
+		_, err := identifyAncestor(200, []connPaneProcess{{42, connIdentity{"eng3", "run"}}}, parent)
 		if err == nil || !strings.Contains(err.Error(), "could not identify your pane") {
 			t.Fatalf("identity refusal = %v", err)
 		}
 	}
 }
 
-func TestPostIdentity_WindowsTCPRefusal(t *testing.T) {
+func TestConnIdentity_WindowsTCPRefusal(t *testing.T) {
 	// Independent spec copy: changing the production constant must fail this AC.
-	const want = "post is not available on Windows in this release: initech cannot identify which agent is posting over this transport"
-	if postWindowsRefusal != want {
-		t.Errorf("Windows refusal constant = %q, want %q", postWindowsRefusal, want)
+	const want = "this command is not available on Windows in this release: initech cannot tell which agent's pane a call comes from over this transport"
+	if connWindowsRefusal != want {
+		t.Errorf("Windows refusal constant = %q, want %q", connWindowsRefusal, want)
 	}
-	err := postPlatformError("windows")
+	err := connPlatformError("windows")
 	if err == nil || err.Error() != want {
 		t.Fatalf("Windows refusal = %v", err)
 	}
@@ -76,7 +76,7 @@ func TestPostIdentity_WindowsTCPRefusal(t *testing.T) {
 // A real test subprocess is the poster, inside a real pane shell. This measures
 // peer credentials + ancestry on the actual transport without involving a live
 // fleet or an AI harness; attribution depends on the process tree, not its UI.
-func TestPostIdentity_RealPaneConnectionIgnoresForgedEnvironment(t *testing.T) {
+func TestConnIdentity_RealPaneConnectionIgnoresForgedEnvironment(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("requires supported Unix peer credentials and a PTY")
 	}
@@ -96,14 +96,14 @@ func TestPostIdentity_RealPaneConnectionIgnoresForgedEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := NewPane(PaneConfig{Name: "eng3", AgentType: "generic", Command: []string{"/bin/sh", "-c", `"$1" -test.run=^TestPostIdentityProcessHelper$; sleep 1`, "inbox-helper", executable}, Env: []string{"INITECH_POST_TEST_SOCKET=" + endpoint, "INITECH_AGENT=super"}}, 24, 100)
+	p, err := NewPane(PaneConfig{Name: "eng3", AgentType: "generic", Command: []string{"/bin/sh", "-c", `"$1" -test.run=^TestConnIdentityProcessHelper$; sleep 1`, "inbox-helper", executable}, Env: []string{"INITECH_POST_TEST_SOCKET=" + endpoint, "INITECH_AGENT=super"}}, 24, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p.Close()
 	p.Start()
 	app := &TUI{panes: []PaneView{p}}
-	var identity postIdentity
+	var identity connIdentity
 	for attempt := 0; attempt < 3; attempt++ {
 		conn, err := listener.AcceptUnix()
 		if err != nil {
@@ -120,12 +120,12 @@ func TestPostIdentity_RealPaneConnectionIgnoresForgedEnvironment(t *testing.T) {
 			conn.Close()
 			t.Fatal(err)
 		}
-		identity, err = app.identifyPostConnection(conn)
+		identity, err = app.identifyConnection(conn)
 		if err != nil {
 			conn.Close()
 			t.Fatal(err)
 		}
-		if identity.agent != "eng3" || identity.runKey != postProcessRunKey(p.pid, p.startedAt) {
+		if identity.agent != "eng3" || identity.runKey != connProcessRunKey(p.pid, p.startedAt) {
 			conn.Close()
 			t.Fatalf("peer attribution = %+v", identity)
 		}
@@ -145,7 +145,7 @@ func TestPostIdentity_RealPaneConnectionIgnoresForgedEnvironment(t *testing.T) {
 	t.Logf("tier 1 measured: %s Unix peer -> pane PID %d -> agent %s, run %s", runtime.GOOS, p.pid, identity.agent, identity.runKey)
 }
 
-func TestPostIdentityProcessHelper(t *testing.T) {
+func TestConnIdentityProcessHelper(t *testing.T) {
 	endpoint := os.Getenv("INITECH_POST_TEST_SOCKET")
 	if endpoint == "" {
 		return
@@ -215,7 +215,7 @@ func postTestResponse(t *testing.T, serve func(net.Conn)) IPCResponse {
 	return response
 }
 
-func TestPostIdentity_ConnectionRunKeyChangesAcrossSimulatedRestart(t *testing.T) {
+func TestConnIdentity_ConnectionRunKeyChangesAcrossSimulatedRestart(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("requires Unix peer credentials")
 	}
@@ -242,7 +242,7 @@ func TestPostIdentity_ConnectionRunKeyChangesAcrossSimulatedRestart(t *testing.T
 	now := time.Now()
 	pane := &Pane{name: "eng3", pid: os.Getpid(), alive: true, startedAt: now}
 	app := &TUI{panes: []PaneView{pane}}
-	before, err := app.identifyPostConnection(server)
+	before, err := app.identifyConnection(server)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestPostIdentity_ConnectionRunKeyChangesAcrossSimulatedRestart(t *testing.T
 	if !first.OK || len(first.Notices) != 1 {
 		t.Fatalf("first-run teaching: %+v", first)
 	}
-	again, err := app.identifyPostConnection(server)
+	again, err := app.identifyConnection(server)
 	if err != nil || again.runKey != before.runKey {
 		t.Fatalf("same process changed run: %+v %v", again, err)
 	}
@@ -261,7 +261,7 @@ func TestPostIdentity_ConnectionRunKeyChangesAcrossSimulatedRestart(t *testing.T
 	// Simulate replacement, including PID reuse: the restarted pane has a new
 	// process start instant. Exercise the production connection resolver again.
 	app.panes = []PaneView{&Pane{name: "eng3", pid: os.Getpid(), alive: true, startedAt: now.Add(time.Second)}}
-	after, err := app.identifyPostConnection(server)
+	after, err := app.identifyConnection(server)
 	if err != nil || before.runKey == after.runKey || before.agent != after.agent {
 		t.Fatalf("restart identity: %+v -> %+v (%v)", before, after, err)
 	}

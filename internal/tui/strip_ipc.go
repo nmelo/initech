@@ -178,7 +178,7 @@ func (t *TUI) stripCallerIs(conn net.Conn, agent string) error {
 	identify := t.identifyStripCaller
 	if identify == nil {
 		identify = func(c net.Conn) (string, error) {
-			id, err := t.identifyPostConnection(c)
+			id, err := t.identifyConnection(c)
 			return id.agent, err
 		}
 	}

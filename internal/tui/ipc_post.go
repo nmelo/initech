@@ -82,11 +82,11 @@ func (t *TUI) inboxState() *Inbox {
 }
 
 func (t *TUI) handleIPCPost(conn net.Conn, req IPCRequest, raw []byte) {
-	if err := postPlatformError(runtime.GOOS); err != nil {
+	if err := connPlatformError(runtime.GOOS); err != nil {
 		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
 		return
 	}
-	identity, err := t.identifyPostConnection(conn)
+	identity, err := t.identifyConnection(conn)
 	if err != nil {
 		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
 		return
@@ -94,7 +94,7 @@ func (t *TUI) handleIPCPost(conn net.Conn, req IPCRequest, raw []byte) {
 	if err := validatePostRequest(req, raw); err != nil {
 		response := IPCResponse{Error: err.Error()}
 		if errors.Is(err, errPostSuppliedIdentity) && t.postTeaching.once(identity, "forged-identity") {
-			response.Notices = []string{postIdentityRule}
+			response.Notices = []string{postAttributionRule}
 		}
 		writeIPCResponse(conn, response)
 		return
@@ -139,7 +139,7 @@ func validatePostRequest(req IPCRequest, raw []byte) error {
 	return nil
 }
 
-func (t *TUI) applyPostRequest(req IPCRequest, identity postIdentity, now time.Time) IPCResponse {
+func (t *TUI) applyPostRequest(req IPCRequest, identity connIdentity, now time.Time) IPCResponse {
 	if identity.agent == "" || identity.runKey == "" {
 		return IPCResponse{Error: "could not identify your pane"}
 	}
@@ -249,12 +249,12 @@ type postRunTeaching struct {
 
 type postTeachingState struct {
 	mu   sync.Mutex
-	runs map[postIdentity]*postRunTeaching
+	runs map[connIdentity]*postRunTeaching
 }
 
-func (s *postTeachingState) runLocked(id postIdentity) *postRunTeaching {
+func (s *postTeachingState) runLocked(id connIdentity) *postRunTeaching {
 	if s.runs == nil {
-		s.runs = make(map[postIdentity]*postRunTeaching)
+		s.runs = make(map[connIdentity]*postRunTeaching)
 	}
 	if s.runs[id] == nil {
 		s.runs[id] = &postRunTeaching{taught: make(map[string]bool), checks: make(map[string][]time.Time)}
@@ -262,7 +262,7 @@ func (s *postTeachingState) runLocked(id postIdentity) *postRunTeaching {
 	return s.runs[id]
 }
 
-func (s *postTeachingState) once(id postIdentity, condition string) bool {
+func (s *postTeachingState) once(id connIdentity, condition string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r := s.runLocked(id)
@@ -273,7 +273,7 @@ func (s *postTeachingState) once(id postIdentity, condition string) bool {
 	return true
 }
 
-func (s *postTeachingState) check(id postIdentity, itemID string, now time.Time) string {
+func (s *postTeachingState) check(id connIdentity, itemID string, now time.Time) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r := s.runLocked(id)
@@ -296,3 +296,7 @@ func (s *postTeachingState) check(id postIdentity, itemID string, now time.Time)
 	r.checks = nil
 	return fmt.Sprintf("unread — checked %d times in %s. The reply is delivered to your pane; stop polling and keep working.", len(kept), now.Sub(kept[0]).Round(time.Second))
 }
+
+// postAttributionRule is initech post's own teaching for a post that names
+// its poster: the post command's words, which go with it.
+const postAttributionRule = "posts are attributed to the agent that runs them; run initech post from inside your agent's pane"

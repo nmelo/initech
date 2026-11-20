@@ -9,5 +9,5 @@ import (
 
 // Windows uses TCP, not named pipes. A per-pane token is the named future
 // mechanism; this release refuses instead of pretending TCP supplies identity.
-func postPeerPID(net.Conn) (int, error) { return 0, postPlatformError(runtime.GOOS) }
-func postParentPID(int) (int, error)    { return 0, postPlatformError(runtime.GOOS) }
+func connPeerPID(net.Conn) (int, error) { return 0, connPlatformError(runtime.GOOS) }
+func connParentPID(int) (int, error)    { return 0, connPlatformError(runtime.GOOS) }

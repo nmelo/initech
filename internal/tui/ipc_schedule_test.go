@@ -26,7 +26,7 @@ func cronIPC(t *testing.T, tui *TUI, req IPCRequest) IPCResponse {
 	t.Helper()
 	conn := &fakeConn{}
 	// The connection's identity is the request's From here: the stand-in for
-	// identifyPostConnection, which needs a real pane process behind the socket.
+	// identifyConnection, which needs a real pane process behind the socket.
 	tui.sched.identify = func(net.Conn) (string, error) {
 		if req.From == "" {
 			return "", errors.New("not inside an agent's pane")

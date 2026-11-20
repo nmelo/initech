@@ -51,7 +51,7 @@ func g242Arrangement(names []string) PersistentLayout {
 // THE REGRESSION THAT BIT: a file carrying "4x11" must load with everything
 // else in it intact. Only the grid may be recomputed.
 func TestLoadLayout_AnUnreadableGridKeepsGroupsMembershipOrderAndMode(t *testing.T) {
-	root := inboxRoot(t)
+	root := tempProjectRoot(t)
 	names := g242Names(41)
 	saved := g242Arrangement(names)
 	g242WriteLayout(t, root, saved)
@@ -87,7 +87,7 @@ operator lost six hand-built groups this way on every other restart (ini-g242).`
 // arrangement and the file does not change between saves. The every-other-
 // restart shape needs TWO cycles to show.
 func TestLayoutRoundTrip_A41AgentFleetSurvivesRepeatedRestarts(t *testing.T) {
-	root := inboxRoot(t)
+	root := tempProjectRoot(t)
 	names := g242Names(41)
 	g242WriteLayout(t, root, g242Arrangement(names))
 
@@ -127,7 +127,7 @@ func TestAutoGrid_EveryResultIsReadableByTheLoader(t *testing.T) {
 // The save path is the last line: whatever state reaches it, the file holds a
 // grid the loader accepts.
 func TestSaveLayout_NeverWritesAGridTheLoaderRejects(t *testing.T) {
-	root := inboxRoot(t)
+	root := tempProjectRoot(t)
 	state := DefaultLayoutState(g242Names(41))
 	state.GridCols, state.GridRows = 4, 11
 	if err := SaveLayout(root, state); err != nil {

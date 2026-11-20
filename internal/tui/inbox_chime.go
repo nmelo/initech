@@ -70,7 +70,7 @@ func (l *inboxChimeLimiter) allow(agent string, now time.Time) (bool, time.Durat
 // The returned notice travels back through child B's response channel, which
 // is the one path guaranteed to land in the agent's context while it is
 // paying attention.
-func (t *TUI) chimeForInboxPost(id postIdentity, flagged bool, itemID string, now time.Time) (bool, string) {
+func (t *TUI) chimeForInboxPost(id connIdentity, flagged bool, itemID string, now time.Time) (bool, string) {
 	// An unflagged post never chimes. The operator's bell means "an agent
 	// judged this worth interrupting you for"; ringing for everything is how
 	// it stops meaning that.

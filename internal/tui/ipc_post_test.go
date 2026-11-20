@@ -61,7 +61,7 @@ func TestPostIPC_AllStatesAndOwnerWithdrawal(t *testing.T) {
 		t.Errorf("unread status constant = %q, want %q", inboxUnreadStatus, wantUnread)
 	}
 	app := &TUI{}
-	id := postIdentity{"eng3", "process-1"}
+	id := connIdentity{"eng3", "process-1"}
 	now := time.Now()
 	post := app.applyPostRequest(IPCRequest{Action: "post", Text: "hello"}, id, now)
 	if !post.OK || post.Data != "posted p1" {
@@ -96,7 +96,7 @@ func TestPostIPC_AllStatesAndOwnerWithdrawal(t *testing.T) {
 		t.Fatalf("terminal withdrawal: %+v", refused)
 	}
 	for _, mode := range []string{"post_check", "post_withdraw"} {
-		other := app.applyPostRequest(IPCRequest{Action: mode, ItemID: "p1"}, postIdentity{"eng2", "other"}, now)
+		other := app.applyPostRequest(IPCRequest{Action: mode, ItemID: "p1"}, connIdentity{"eng2", "other"}, now)
 		if other.OK || !strings.Contains(other.Error, "another agent") {
 			t.Fatalf("owner check: %+v", other)
 		}
@@ -122,7 +122,7 @@ func TestPostIPC_AllStatesAndOwnerWithdrawal(t *testing.T) {
 	if got.Data != "dismissed" {
 		t.Fatalf("dismissed check: %+v", got)
 	}
-	mine := app.applyPostRequest(IPCRequest{Action: "post_mine"}, postIdentity{"eng3", "process-2"}, now)
+	mine := app.applyPostRequest(IPCRequest{Action: "post_mine"}, connIdentity{"eng3", "process-2"}, now)
 	for _, status := range []string{"p1 answered", "p2 withdrawn", "p3 dismissed"} {
 		if !strings.Contains(mine.Data, status) {
 			t.Errorf("restart loses history: %+v", mine)
@@ -133,8 +133,8 @@ func TestPostIPC_AllStatesAndOwnerWithdrawal(t *testing.T) {
 func TestPostIPC_TeachingsAggregateAndResetWithPaneProcess(t *testing.T) {
 	app := &TUI{}
 	now := time.Now()
-	first := postIdentity{"eng3", postProcessRunKey(42, now)}
-	restarted := postIdentity{"eng3", postProcessRunKey(43, now.Add(time.Minute))}
+	first := connIdentity{"eng3", connProcessRunKey(42, now)}
+	restarted := connIdentity{"eng3", connProcessRunKey(43, now.Add(time.Minute))}
 	// This initial question declares its default, avoiding B's tip, and is dismissed.
 	app.applyPostRequest(IPCRequest{Action: "post", Text: "update docs?", DefaultText: "update both"}, first, now)
 	if err := app.inboxState().Transition("p1", InboxDismissed, actorOperator); err != nil {
@@ -166,7 +166,7 @@ func TestPostIPC_TeachingsAggregateAndResetWithPaneProcess(t *testing.T) {
 
 func TestPostTeaching_PollingWindowAndPerRunLatch(t *testing.T) {
 	var state postTeachingState
-	id := postIdentity{"eng3", "run1"}
+	id := connIdentity{"eng3", "run1"}
 	now := time.Unix(10000, 0)
 	if state.check(id, "p1", now) != "" || state.check(id, "p1", now.Add(time.Minute)) != "" {
 		t.Fatal("taught before third check")
@@ -218,7 +218,7 @@ func TestPostMine_BoundsAggregateHistoryWithoutHidingOmission(t *testing.T) {
 
 func TestPostIPC_EmptyAndFollowerRefusedWithoutRecording(t *testing.T) {
 	for _, app := range []*TUI{{}, {windowID: "window2"}} {
-		resp := app.applyPostRequest(IPCRequest{Action: "post", Text: " "}, postIdentity{"eng3", "run"}, time.Now())
+		resp := app.applyPostRequest(IPCRequest{Action: "post", Text: " "}, connIdentity{"eng3", "run"}, time.Now())
 		if resp.OK || !strings.Contains(resp.Error, "usage:") {
 			t.Fatalf("empty: %+v", resp)
 		}
@@ -227,7 +227,7 @@ func TestPostIPC_EmptyAndFollowerRefusedWithoutRecording(t *testing.T) {
 		}
 	}
 	follower := &TUI{windowID: "window2"}
-	resp := follower.applyPostRequest(IPCRequest{Action: "post", Text: "hello"}, postIdentity{"eng3", "run"}, time.Now())
+	resp := follower.applyPostRequest(IPCRequest{Action: "post", Text: "hello"}, connIdentity{"eng3", "run"}, time.Now())
 	if resp.OK || len(follower.inboxState().Items()) != 0 {
 		t.Fatalf("follower wrote: %+v", resp)
 	}
@@ -250,7 +250,7 @@ func TestPostIPC_CheckReportsDeliverySeparatelyFromAnswer(t *testing.T) {
 	for _, status := range []string{"", "delivered", "held — agent has a dialog open; delivers when it clears", "typed, awaiting submit", "queued — agent suspended; wakes and delivers", "not running — stored"} {
 		t.Run(status, func(t *testing.T) {
 			app := &TUI{}
-			identity := postIdentity{"eng3", "run"}
+			identity := connIdentity{"eng3", "run"}
 			result, err := app.inboxState().Post(InboxItem{Agent: identity.agent, Body: "question"}, identity.runKey)
 			if err != nil {
 				t.Fatal(err)
@@ -279,7 +279,7 @@ func TestPostIPC_CheckReportsDeliverySeparatelyFromAnswer(t *testing.T) {
 // reported undeliverable, through the same request --withdraw sends.
 func TestPostIPC_WithdrawsAnAnsweredItemWhoseReplyWasNotDelivered(t *testing.T) {
 	app := &TUI{}
-	id := postIdentity{"eng3", "process-1"}
+	id := connIdentity{"eng3", "process-1"}
 	now := time.Now()
 	if post := app.applyPostRequest(IPCRequest{Action: "post", Text: "hello"}, id, now); !post.OK || post.Data != "posted p1" {
 		t.Fatalf("post: %+v", post)

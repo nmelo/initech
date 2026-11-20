@@ -23,22 +23,22 @@ func (d *Daemon) identifySendingPane(conn net.Conn) (string, error) {
 	if d.identifySender != nil {
 		return d.identifySender(conn)
 	}
-	if err := postPlatformError(runtime.GOOS); err != nil {
+	if err := connPlatformError(runtime.GOOS); err != nil {
 		return "", err
 	}
-	pid, err := postPeerPID(conn)
+	pid, err := connPeerPID(conn)
 	if err != nil {
 		return "", err
 	}
-	var processes []postPaneProcess
+	var processes []connPaneProcess
 	for _, p := range d.snapshotPanes() {
 		p.mu.Lock()
 		if p.alive && p.pid > 0 {
-			processes = append(processes, postPaneProcess{pid: p.pid, identity: postIdentity{agent: p.name}})
+			processes = append(processes, connPaneProcess{pid: p.pid, identity: connIdentity{agent: p.name}})
 		}
 		p.mu.Unlock()
 	}
-	id, err := identifyPostAncestor(pid, processes, postParentPID)
+	id, err := identifyAncestor(pid, processes, connParentPID)
 	if err != nil {
 		return "", fmt.Errorf("not inside one of its panes")
 	}
