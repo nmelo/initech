@@ -210,7 +210,8 @@ first.
   opens that pane, pinned or not: beside the list on iPad, over it on iPhone, where the way back returns to Rigs.
 - `InitechApp/BlockersView.swift`, `ProgressView.swift`, `OperatorScreens.swift`: Waiting (the questions that
   wait on you and the panes that look stuck; rigs with neither share one line) and Progress (a section per rig, one row per bead in flight led by its
-  stage's icon, `InitechCore/.../BeadStage.swift`; an effort of several beads keeps its pace line and bar). The code still says
+  stage's icon, `InitechCore/.../BeadStage.swift`; an effort of several beads keeps its pace line and bar; a row whose owner's pane
+  can be opened says so and opens it when tapped). The code still says
   blockers, which is the service's name for that list.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation, under its own header with the way
   back. On iPhone a swipe in from the left edge goes back too (`BackSwipe.swift` keeps the system's swipe

@@ -71,7 +71,7 @@ struct ProgressScreen: View {
     }
 
     var body: some View {
-        EffortProgressView(progress: model)
+        EffortProgressView(progress: model, canOpen: { home.row(for: $0) != nil }, open: { home.open($0) })
             .onAppear { home.listeners["progress"] = model }
             .onDisappear { home.listeners["progress"] = nil }
     }

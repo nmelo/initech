@@ -8,6 +8,10 @@ import SwiftUI
 /// section. It is shown, never typed, and shows no finish time.
 struct EffortProgressView: View {
     @ObservedObject var progress: ProgressModel
+    /// canOpen says the pane is one the app can open (it is running, or pinned);
+    /// open opens it. A bead's row opens its owner's pane: who to ask about it.
+    var canOpen: (PaneRef) -> Bool = { _ in false }
+    var open: (PaneRef) -> Void = { _ in }
 
     /// rigs is the cards grouped by rig, in the order the service sent them.
     private var rigs: [(rig: String, cards: [ProgressCard])] {
@@ -35,12 +39,12 @@ struct EffortProgressView: View {
                         // rig, what is stuck first; an effort of several beads follows as a
                         // block under its pace line.
                         ForEach(Self.loose(group.cards), id: \.bead.id) { item in
-                            BeadRow(bead: item.bead).accessibilityIdentifier("progress-\(item.card)")
+                            row(item.bead, rig: group.rig).accessibilityIdentifier("progress-\(item.card)")
                         }
                         ForEach(group.cards.filter { !$0.single }) { card in
                             EffortLine(card: card)
                             ForEach(card.sorted) { bead in
-                                BeadRow(bead: bead).accessibilityIdentifier("progress-bead-\(bead.id)")
+                                row(bead, rig: group.rig).accessibilityIdentifier("progress-bead-\(bead.id)")
                             }
                         }
                         ForEach(group.cards.flatMap(\.offRows), id: \.self) { line in
@@ -83,6 +87,18 @@ struct EffortProgressView: View {
                 await progress.reload()
                 try? await Task.sleep(for: .seconds(300))
             }
+        }
+    }
+
+    /// row is a bead's row; when its owner's pane can be opened, tapping the row opens it.
+    @ViewBuilder private func row(_ bead: ProgressCard.Bead, rig: String) -> some View {
+        let pane = PaneRef(rig: rig, pane: bead.owner)
+        if !bead.owner.isEmpty && canOpen(pane) {
+            Button { open(pane) } label: { BeadRow(bead: bead, opens: true) }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens \(bead.owner)'s pane")
+        } else {
+            BeadRow(bead: bead)
         }
     }
 
@@ -131,6 +147,8 @@ private struct EffortLine: View {
 /// line of who and where it stands, and its flags when it has any.
 private struct BeadRow: View {
     let bead: ProgressCard.Bead
+    /// opens is true when tapping the row opens the owner's pane: the row then shows where it leads.
+    var opens = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -145,6 +163,9 @@ private struct BeadRow: View {
                     Text(note).font(Theme.mono(.caption)).foregroundStyle(Theme.orange)
                         .lineLimit(3).fixedSize(horizontal: false, vertical: true)
                 }
+                if opens {
+                    Text("❯ \(bead.owner)").font(Theme.mono(.caption, .semibold)).foregroundStyle(Theme.red)
+                }
                 if !flags.isEmpty {
                     HStack(spacing: 8) {
                         ForEach(flags, id: \.word) { flag in
@@ -157,6 +178,8 @@ private struct BeadRow: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 
