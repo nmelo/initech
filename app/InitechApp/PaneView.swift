@@ -2,8 +2,8 @@ import InitechCore
 import SwiftUI
 
 /// PaneView is one pane as a conversation, in the terminal look: replies as
-/// text, tool runs as one line that expands, his messages as prompt lines, the
-/// footer at the bottom of each reply, and below the input line the key strip.
+/// text, a run of tool calls as one line that opens, his messages as prompt
+/// lines, the footer at the bottom of each reply, and the input line below.
 struct PaneView: View {
     @StateObject var model: PaneModel
     @ObservedObject var home: HomeModel
@@ -12,6 +12,8 @@ struct PaneView: View {
     @State private var loadingOlder = false
     /// visible is the entries on screen, at least half in view.
     @State private var visible: Set<String> = []
+    /// end is the id of the conversation's true end.
+    static let end = "pane-end"
     /// compact is the pane stacked over the list, where it needs a way back.
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -23,6 +25,7 @@ struct PaneView: View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
+                  VStack(spacing: 0) {
                     LazyVStack(alignment: .leading, spacing: 14) {
                         // Older entries load on a tap, never by scrolling: a lazy
                         // stack builds its first rows whatever is on screen, so
@@ -59,6 +62,12 @@ struct PaneView: View {
                     }
                     .scrollTargetLayout()
                     .padding()
+                    // The true end of the conversation, below the last row and its
+                    // padding: what "the bottom" scrolls to. Scrolling to the last row
+                    // itself stopped at its lower edge, 17 points short (measured), and
+                    // left that much to scroll.
+                    Color.clear.frame(height: 1).id(Self.end)
+                  }
                 }
                 // A pane opens on its newest entry. No scroll position is held
                 // by id: a held id went stale when an older page came in, and the
@@ -82,7 +91,7 @@ struct PaneView: View {
                 .onChange(of: rows.last?.id) { old, last in
                     guard let last else { return }
                     guard let old else {
-                        proxy.scrollTo(last, anchor: .bottom)
+                        proxy.scrollTo(Self.end, anchor: .bottom)
                         follow.sawBottom(last)
                         return
                     }
@@ -92,14 +101,14 @@ struct PaneView: View {
                     // view; the pane opened at the bottom, so that stands.
                     let wasAtBottom = visible.isEmpty ? follow.atBottom : visible.contains(old)
                     if follow.arrived(ids, previous: old, wasAtBottom: wasAtBottom, own: own) == .follow {
-                        withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                        withAnimation { proxy.scrollTo(Self.end, anchor: .bottom) }
                     }
                 }
                 .overlay(alignment: .bottom) {
                     if let line = follow.markerText(rows.map(\.id)) {
                         Button(line) {
                             if let last = rows.last?.id {
-                                withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                                withAnimation { proxy.scrollTo(Self.end, anchor: .bottom) }
                                 follow.sawBottom(last)
                             }
                         }
@@ -120,7 +129,6 @@ struct PaneView: View {
                 ScreenLines(lines: screen)
             }
             InputBar(draft: $draft) { text in Task { await model.send(text) } }
-            KeyStrip(last: model.lastKey, atDialog: row?.atDialog ?? false) { key in Task { await model.press(key) } }
         }
         .background(Theme.bg.ignoresSafeArea())
         // The pane draws its own header, in the list's style, so the system's bar
@@ -391,50 +399,5 @@ struct InputBar: View {
         .padding(.vertical, 11)
         .background(Theme.bar)
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
-    }
-}
-
-/// KeyStrip sends Enter, Esc, Ctrl-C, y or n to the pane. "Delivered" means
-/// the key reached the pane, not that it did anything, so a pane at a dialog
-/// also says which keys act there.
-struct KeyStrip: View {
-    var last: (key: PaneKey, result: SendResult)?
-    var atDialog = false
-    let press: (PaneKey) -> Void
-
-    /// hint is the line a pane at a dialog shows under the keys.
-    static func hint(atDialog: Bool) -> String? {
-        atDialog ? "On Claude's numbered prompt, Enter says Yes and Esc says No; y, n and Ctrl-C do nothing there." : nil
-    }
-
-    var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 7) {
-                ForEach(PaneKey.allCases, id: \.self) { key in
-                    Button { press(key) } label: {
-                        Text(key.label.lowercased())
-                            .font(Theme.mono(.footnote, .semibold))
-                            .foregroundStyle(atDialog && (key == .enter || key == .esc) ? Theme.orange : Theme.soft)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .overlay(RoundedRectangle(cornerRadius: 6)
-                                .stroke(atDialog && (key == .enter || key == .esc) ? Theme.orange.opacity(0.7) : Theme.faint, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(key.label)
-                }
-            }
-            if let hint = Self.hint(atDialog: atDialog) {
-                Text(hint).font(Theme.mono(.caption2)).foregroundStyle(Theme.soft).multilineTextAlignment(.center)
-            }
-            if let last {
-                Text("\(last.key.label): \(last.result.words)")
-                    .font(Theme.mono(.caption2))
-                    .foregroundStyle(last.result.outcome == .delivered ? Theme.dim : Theme.red)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 4).padding(.bottom, 8)
-        .background(Theme.bar)
     }
 }

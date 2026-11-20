@@ -1,8 +1,8 @@
 import XCTest
 
 /// PaneFlowUITests taps through the real app: pin from Rigs, rename, reorder,
-/// open a pane, send, and press Enter and Esc at a prompt. simctl has no tap,
-/// so this is how those taps get driven at all.
+/// open a pane and send. simctl has no tap, so this is how those taps get
+/// driven at all.
 ///
 /// With no environment they run against FixtureServer. Against a real
 /// `initech app-serve`, app/scripts/live-ui-test.sh sets:
@@ -415,42 +415,5 @@ final class PaneFlowUITests: XCTestCase {
         server.emit("transcript", #"{"rig":"initech","pane":"\#(paneB)","message":{"id":"s4","kind":"agent","text":"short 4"}}"#)
         XCTAssertTrue(app.staticTexts["short 4"].waitForExistence(timeout: 10))
         XCTAssertFalse(element("new below").exists, "a short conversation showed the line")
-    }
-
-    /// AC 7: at a prompt the screen lines and the hint show; Esc and then Enter
-    /// reach the pane and the prompt closes. Live, the script checks what each
-    /// key did in the rig: Esc creates no file, Enter creates it.
-    func testKeyStrip_EnterAndEsc_AtAPrompt() throws {
-        launch()
-        unpinAll()
-        pinFromRigs([paneA])
-        XCTAssertTrue(row(paneA).waitForExistence(timeout: 10))
-        row(paneA).tap()
-        XCTAssertTrue(app.buttons["Esc"].waitForExistence(timeout: 15), "the pane did not open")
-
-        for (key, label) in [("esc", "Esc"), ("enter", "Enter")] {
-            touch("prompt-\(key).need")
-            if let server {
-                server.status = status(a: "waiting", banner: "permission_prompt", screen: Self.promptLines)
-                server.emit("pane_state", #"{"rig":"initech","pane":"\#(paneA)","from":"idle","to":"waiting","banner":"permission_prompt"}"#)
-            }
-            let hint = element("Enter says Yes and Esc says No")
-            XCTAssertTrue(hint.waitForExistence(timeout: stateTimeout), "\(label): the pane never showed the prompt")
-            XCTAssertTrue(element("Do you want").waitForExistence(timeout: 10), "\(label): no screen lines above the input")
-
-            app.buttons[label].tap()
-            XCTAssertTrue(element("\(label): key \(key) delivered to \(paneA)").waitForExistence(timeout: 15),
-                          "\(label): the key's result did not show")
-            touch("prompt-\(key).pressed")
-
-            if let server {
-                let bodies = server.requests.filter { $0.path == "/v1/keys/initech/\(paneA)" }
-                    .map { String(decoding: $0.body, as: UTF8.self) }
-                XCTAssertEqual(bodies.last, #"{"key":"\#(key)"}"#, "the service did not get that key")
-                server.status = status(a: "idle", banner: "none", screen: nil)
-                server.emit("pane_state", #"{"rig":"initech","pane":"\#(paneA)","from":"waiting","to":"idle","banner":"none"}"#)
-            }
-            XCTAssertTrue(hint.waitForNonExistence(timeout: stateTimeout), "\(label): the prompt did not close")
-        }
     }
 }

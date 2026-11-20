@@ -225,14 +225,6 @@ final class PaneModelTests: XCTestCase {
         XCTAssertEqual(pane.lastKey?.result.words, "eng1 is not running")
     }
 
-    func testKeyStrip_SaysWhichKeysActOnlyAtADialog() throws {
-        let hint = try XCTUnwrap(KeyStrip.hint(atDialog: true))
-        XCTAssertTrue(hint.contains("Enter says Yes"), hint)
-        XCTAssertTrue(hint.contains("Esc says No"), hint)
-        XCTAssertTrue(hint.contains("Ctrl-C do nothing"), hint)
-        XCTAssertNil(KeyStrip.hint(atDialog: false))
-    }
-
     func testPaneRow_ShowsScreenLinesOnlyAtADialogOrBanner() {
         func row(_ state: String?, _ banner: String?) -> PaneRow {
             PaneRow(ref: ref, name: "eng1", state: state, banner: banner, gone: false)
