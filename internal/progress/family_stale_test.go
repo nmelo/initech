@@ -27,8 +27,8 @@ func famBead(id, status, parent, owner string, ago time.Duration) map[string]any
 	return b
 }
 
-// famReport builds the report over beads decoded from bd's JSON, in theguy's
-// rig shape (status.custom waiting_on_nelson,waiting,waiting_for_release), with
+// famReport builds the report over beads decoded from bd's JSON, in a management
+// rig's shape (status.custom waiting_on_nelson,waiting,waiting_for_release), with
 // a 20-minute window and every owner idle.
 func famReport(t *testing.T, comments map[string][]Comment, beads ...map[string]any) Report {
 	t.Helper()

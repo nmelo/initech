@@ -116,8 +116,8 @@ func TestJudge_OnlyWaitingBeadsAskTheWorld(t *testing.T) {
 // and over whatever its age, and never stuck; the stuck setting's three north
 // cases stay where they were.
 func TestCounts_OverIsWaitingNeverStuck(t *testing.T) {
-	in := hoverWaitingInput()
-	fresh := Bead{ID: "hov-w.7", Title: "over, just set", Status: "waiting", Assignee: "eng1", UpdatedAt: paceNow.Add(-time.Minute),
+	in := waitingShapesInput()
+	fresh := Bead{ID: "rga-w.7", Title: "over, just set", Status: "waiting", Assignee: "eng1", UpdatedAt: paceNow.Add(-time.Minute),
 		Metadata: json.RawMessage(`{"wait_on":"date:2026-10-30"}`)}
 	in.Beads = append(in.Beads, fresh)
 	in.Beads = JudgeAll(in.Beads, paceNow, nil)
@@ -127,7 +127,7 @@ func TestCounts_OverIsWaitingNeverStuck(t *testing.T) {
 	}
 	var row *WaitingRow
 	for i := range r.Waiting {
-		if r.Waiting[i].ID == "hov-w.7" {
+		if r.Waiting[i].ID == "rga-w.7" {
 			row = &r.Waiting[i]
 		}
 	}
@@ -137,14 +137,14 @@ func TestCounts_OverIsWaitingNeverStuck(t *testing.T) {
 	if len(r.Waiting) != 5 {
 		t.Errorf("waiting %d, want the four north cases and the over bead", len(r.Waiting))
 	}
-	p := PaceOver(in.Beads, "hov-w", in.Panes, in.Rule, in.Now, HeaderWindow)
+	p := PaceOver(in.Beads, "rga-w", in.Panes, in.Rule, in.Now, HeaderWindow)
 	if p.Over != 1 || !strings.HasSuffix(p.Line(), "· 5 waiting · 1 over") {
 		t.Errorf("line %q, over %d", p.Line(), p.Over)
 	}
 	// An over wait old enough to be stuck, its owner idle: still waiting, never
 	// stuck. The minute-old bead above cannot tell, since it is under the value.
-	agedIn := hoverWaitingInput()
-	agedIn.Beads = append(agedIn.Beads, Bead{ID: "hov-w.8", Title: "over, long ago", Status: "waiting", Assignee: "eng3", UpdatedAt: paceNow.Add(-3 * time.Hour),
+	agedIn := waitingShapesInput()
+	agedIn.Beads = append(agedIn.Beads, Bead{ID: "rga-w.8", Title: "over, long ago", Status: "waiting", Assignee: "eng3", UpdatedAt: paceNow.Add(-3 * time.Hour),
 		Metadata: json.RawMessage(`{"wait_on":"date:2026-10-30"}`)})
 	agedIn.Beads = JudgeAll(agedIn.Beads, paceNow, nil)
 	aged := Build(agedIn)
@@ -152,7 +152,7 @@ func TestCounts_OverIsWaitingNeverStuck(t *testing.T) {
 		t.Errorf("an aged over wait: stuck %d %v, over %d; want stuck 0, over 1", aged.Stuck, aged.StuckIDs, aged.WaitingOver)
 	}
 	out := RenderReport(r)
-	for _, want := range []string{"waiting 5 (1 over)", "hov-w.7 eng1: no comment [OVER: 2026-10-30 passed]", "hov-w.4 -: no comment [waits on unknown]"} {
+	for _, want := range []string{"waiting 5 (1 over)", "rga-w.7 eng1: no comment [OVER: 2026-10-30 passed]", "rga-w.4 -: no comment [waits on unknown]"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the table lacks %q:\n%s", want, out)
 		}

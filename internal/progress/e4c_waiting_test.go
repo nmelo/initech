@@ -10,37 +10,37 @@ import (
 // its text (this repo is public): 55 waiting there, 21 with an owner and 34
 // with no holder, many titled "Step ...", which the table leaves out. All of
 // them land in the calm waiting count and none in stuck.
-func hoverWaitingInput() Input {
+func waitingShapesInput() Input {
 	old := paceNow.Add(-3 * time.Hour)
 	return Input{
-		Rig: "demo", Prefix: "hov-w.", Hours: 6, Now: paceNow, Rule: NewRule(20*time.Minute, []string{"in_progress", "ready_for_qa", "in_qa", "qa_passed"}),
+		Rig: "demo", Prefix: "rga-w.", Hours: 6, Now: paceNow, Rule: NewRule(20*time.Minute, []string{"in_progress", "ready_for_qa", "in_qa", "qa_passed"}),
 		Beads: []Bead{
 			// Case 1: status waiting, the owner idle.
-			{ID: "hov-w.1", Title: "a pause", Status: "waiting", Assignee: "eng1", UpdatedAt: old},
+			{ID: "rga-w.1", Title: "a pause", Status: "waiting", Assignee: "eng1", UpdatedAt: old},
 			// Case 2: the named wait is already over: the bead it names closed.
-			{ID: "hov-w.2", Title: "wait over", Status: "waiting", Assignee: "eng2", UpdatedAt: old},
-			{ID: "hov-w.20", Title: "what it waited on", Status: "closed", ClosedAt: old},
+			{ID: "rga-w.2", Title: "wait over", Status: "waiting", Assignee: "eng2", UpdatedAt: old},
+			{ID: "rga-w.20", Title: "what it waited on", Status: "closed", ClosedAt: old},
 			// Case 3: an idle owner on a bead whose wait is on another bead.
-			{ID: "hov-w.3", Title: "on another bead", Status: "waiting", Assignee: "eng3", UpdatedAt: old},
-			{ID: "hov-w.30", Title: "the other bead", Status: "in_progress", Assignee: "eng4", UpdatedAt: paceNow.Add(-time.Minute)},
+			{ID: "rga-w.3", Title: "on another bead", Status: "waiting", Assignee: "eng3", UpdatedAt: old},
+			{ID: "rga-w.30", Title: "the other bead", Status: "in_progress", Assignee: "eng4", UpdatedAt: paceNow.Add(-time.Minute)},
 			// No holder, a Step title.
-			{ID: "hov-w.4", Title: "Step 5: later work", Status: "waiting", UpdatedAt: old},
+			{ID: "rga-w.4", Title: "Step 5: later work", Status: "waiting", UpdatedAt: old},
 			// Not counted: moved inside the value; an owner at work.
-			{ID: "hov-w.5", Title: "fresh", Status: "waiting", Assignee: "eng1", UpdatedAt: paceNow.Add(-5 * time.Minute)},
-			{ID: "hov-w.6", Title: "owner working", Status: "waiting", Assignee: "eng4", UpdatedAt: old},
+			{ID: "rga-w.5", Title: "fresh", Status: "waiting", Assignee: "eng1", UpdatedAt: paceNow.Add(-5 * time.Minute)},
+			{ID: "rga-w.6", Title: "owner working", Status: "waiting", Assignee: "eng4", UpdatedAt: old},
 		},
 		Comments: map[string][]Comment{
-			"hov-w.1": {{Author: "eng1", Text: "parked for the release\nmore detail", CreatedAt: old}},
-			"hov-w.2": {{Author: "eng2", Text: "older", CreatedAt: old.Add(-time.Hour)}, {Author: "eng2", Text: "waits on hov-w.20 landing", CreatedAt: old}},
-			"hov-w.3": {{Author: "eng3", Text: "waiting on hov-w.30", CreatedAt: old}},
+			"rga-w.1": {{Author: "eng1", Text: "parked for the release\nmore detail", CreatedAt: old}},
+			"rga-w.2": {{Author: "eng2", Text: "older", CreatedAt: old.Add(-time.Hour)}, {Author: "eng2", Text: "waits on rga-w.20 landing", CreatedAt: old}},
+			"rga-w.3": {{Author: "eng3", Text: "waiting on rga-w.30", CreatedAt: old}},
 		},
 		Panes:      map[string]string{"eng1": "idle", "eng2": "idle", "eng3": "idle", "eng4": "running"},
 		PanesKnown: true,
 	}
 }
 
-func TestWaiting_TheHoverCasesCountWaitingNotStuck(t *testing.T) {
-	r := Build(hoverWaitingInput())
+func TestWaiting_TheWaitingShapesCountWaitingNotStuck(t *testing.T) {
+	r := Build(waitingShapesInput())
 	if r.Stuck != 0 || len(r.StuckIDs) != 0 {
 		t.Errorf("stuck %d %v: a waiting bead read stuck", r.Stuck, r.StuckIDs)
 	}
@@ -48,10 +48,10 @@ func TestWaiting_TheHoverCasesCountWaitingNotStuck(t *testing.T) {
 		t.Errorf("blocked %d: waiting is not blocked", r.Blocked)
 	}
 	want := []WaitingRow{
-		{ID: "hov-w.1", Owner: "eng1", Wait: "parked for the release", Target: "unknown"},
-		{ID: "hov-w.2", Owner: "eng2", Wait: "waits on hov-w.20 landing", Target: "unknown"},
-		{ID: "hov-w.3", Owner: "eng3", Wait: "waiting on hov-w.30", Target: "unknown"},
-		{ID: "hov-w.4", Owner: "-", Wait: "no comment", Target: "unknown"},
+		{ID: "rga-w.1", Owner: "eng1", Wait: "parked for the release", Target: "unknown"},
+		{ID: "rga-w.2", Owner: "eng2", Wait: "waits on rga-w.20 landing", Target: "unknown"},
+		{ID: "rga-w.3", Owner: "eng3", Wait: "waiting on rga-w.30", Target: "unknown"},
+		{ID: "rga-w.4", Owner: "-", Wait: "no comment", Target: "unknown"},
 	}
 	if len(r.Waiting) != len(want) {
 		t.Fatalf("waiting = %+v, want %+v", r.Waiting, want)
@@ -62,7 +62,7 @@ func TestWaiting_TheHoverCasesCountWaitingNotStuck(t *testing.T) {
 		}
 	}
 	out := RenderReport(r)
-	for _, line := range []string{"stuck 0, blocked 0, waiting 4", "waiting 20m or more, or wait over:", "  hov-w.1 eng1: parked for the release", "  hov-w.4 -: no comment"} {
+	for _, line := range []string{"stuck 0, blocked 0, waiting 4", "waiting 20m or more, or wait over:", "  rga-w.1 eng1: parked for the release", "  rga-w.4 -: no comment"} {
 		if !strings.Contains(out, line) {
 			t.Errorf("the table lacks %q:\n%s", line, out)
 		}
@@ -91,13 +91,13 @@ func TestQuiet_HoldsOnlyWorkingChainBeads(t *testing.T) {
 
 // The header's line carries the count; an effort of one does too.
 func TestPace_LineCarriesTheWaitingCount(t *testing.T) {
-	in := hoverWaitingInput()
-	p := PaceOf(in.Beads, "hov-w.1", in.Panes, in.Rule, in.Now, HeaderWindow)
+	in := waitingShapesInput()
+	p := PaceOf(in.Beads, "rga-w.1", in.Panes, in.Rule, in.Now, HeaderWindow)
 	if p.Waiting != 4 || !strings.HasSuffix(p.Line(), "· 4 waiting") {
 		t.Errorf("waiting %d, line %q", p.Waiting, p.Line())
 	}
-	alone := []Bead{{ID: "hov-a", Status: "waiting", UpdatedAt: paceNow.Add(-time.Hour)}}
-	if got := PaceOf(alone, "hov-a", nil, in.Rule, paceNow, HeaderWindow).Line(); got != "hov-a 0/1 · 0/h · 1 waiting" {
+	alone := []Bead{{ID: "rga-a", Status: "waiting", UpdatedAt: paceNow.Add(-time.Hour)}}
+	if got := PaceOf(alone, "rga-a", nil, in.Rule, paceNow, HeaderWindow).Line(); got != "rga-a 0/1 · 0/h · 1 waiting" {
 		t.Errorf("an effort of one reads %q", got)
 	}
 }

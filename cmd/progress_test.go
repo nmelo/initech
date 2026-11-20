@@ -162,7 +162,7 @@ const progressRepos = "repos:\n  - url: github.com:nmelo/initech.git\n    name: 
 // departs from the script by ruling: the closed line ends with the stuck and
 // blocked counts (ini-s3b), here 0 and 0 (the panes are not read, and the
 // fixture has no blocked bead).
-func TestProgress_FixtureMatchesTheGuysScript(t *testing.T) {
+func TestProgress_FixtureMatchesTheReferenceScript(t *testing.T) {
 	golden, err := os.ReadFile(filepath.Join(progressTestdata, "golden.txt"))
 	if err != nil {
 		t.Fatal(err)
