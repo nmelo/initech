@@ -24,6 +24,10 @@ enum Theme {
     static let orange = Color(red: 1.0, green: 0.624, blue: 0.039)
     static let grey = Color(red: 0.627, green: 0.627, blue: 0.667)
 
+    /// sidebarWidth is the list's width beside the pane on iPad: the system's
+    /// 320 points and 15% more.
+    static let sidebarWidth: CGFloat = 368
+
     /// barHeight is the least height of a bar at the bottom of the screen: the
     /// list's keys and the pane's input line, which sit side by side on iPad and
     /// must end level.

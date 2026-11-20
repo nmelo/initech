@@ -30,6 +30,7 @@ struct MainView: View {
             HomeList(home: home, push: push, inbox: inbox, tab: $tab,
                      blockersFocus: blockersFocus, besideThePane: sizeClass == .regular)
                 .toolbar(.hidden, for: .navigationBar)
+                .navigationSplitViewColumnWidth(Theme.sidebarWidth)
         } detail: {
             if let ref = home.selection {
                 PaneView(model: PaneModel(service: home.service, ref: ref), home: home, back: tab.rawValue)
