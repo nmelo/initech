@@ -369,14 +369,27 @@ func readPipeFor(t *testing.T, r *os.File, d time.Duration) string {
 
 // A cross-machine forward is confirmed only after the peer's delivery, which
 // may wait out the peer's typing hold: the forward wait must outlast the
-// default cap with room for the belt.
+// default cap with room for the belt, and stay under the sender's own budget
+// so the forwarder answers first. ini-wzjc: with the default cap doubled to
+// 30 s, every budget keeps the margin it had over the 15 s it was sized for.
 func TestForwardSendTimeout_OutlastsTheDefaultTypingHold(t *testing.T) {
+	typingHoldConfig.Store(nil) // the defaults, as a rig with no keys runs
 	cap := config.DefaultTypingHoldMaxS * time.Second
-	if forwardSendTimeout < cap+20*time.Second {
-		t.Fatalf("forward wait %s cannot outlast a %s hold plus delivery", forwardSendTimeout, cap)
+	base := config.TypingHoldBudgetBaseS * time.Second
+	if got, want := forwardSendWait(), forwardSendTimeout+(cap-base); got != want || got < cap+20*time.Second {
+		t.Fatalf("forward wait %s: want %s, outlasting a %s hold plus delivery", got, want, cap)
 	}
-	if forwardSendTimeout >= 45*time.Second {
-		t.Fatalf("forward wait %s reaches the sender's 45s budget; the sender would time out first", forwardSendTimeout)
+	if got, want := sendReplyWait(), 45*time.Second+(cap-base); got != want {
+		t.Fatalf("reply wait %s, want %s: today's margin over the cap", got, want)
+	}
+	if forwardSendWait() >= sendReplyWait() {
+		t.Fatalf("forward wait %s reaches the sender's %s budget; the sender would time out first", forwardSendWait(), sendReplyWait())
+	}
+	// A cap set at or below the base adds nothing, as before.
+	setTypingHold(time.Second, 10*time.Second)
+	defer typingHoldConfig.Store(nil)
+	if forwardSendWait() != forwardSendTimeout || sendReplyWait() != 45*time.Second {
+		t.Fatalf("a 10 s cap grew the budgets: %s, %s", forwardSendWait(), sendReplyWait())
 	}
 }
 

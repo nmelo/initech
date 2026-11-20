@@ -57,7 +57,7 @@ When initech changes `initech.yaml` (the hooks answer, `initech add-agent`, `ini
 | `claude_args` | Flags for every Claude agent, e.g. `[--continue, --dangerously-skip-permissions]` to resume the last session and skip permission prompts. | Agents should pick up where they left off and work unattended. |
 | `resource.auto_suspend`, `resource.pressure_threshold` | Parks idle agents when memory use passes the threshold (a percentage). Off when absent. | The machine runs more agents than its memory comfortably holds. |
 | `running_pane_tint` | Background tint behind panes that are working. The default is `#0c120e`; trained fleets use `#1e2022`, a lighter grey. `none` turns it off. | The default tint is too faint on your display. |
-| `typing_hold_quiet_s`, `typing_hold_max_s` | How long a message to a pane you are typing in waits for you to pause, and the longest it waits. See [Typing hold](#typing-hold). | The default 2 s pause or 15 s cap does not fit how you type. |
+| `typing_hold_quiet_s`, `typing_hold_max_s` | How long a message to a pane you are typing in waits for you to pause, and the longest it waits. See [Typing hold](#typing-hold). | The default 4 s pause or 30 s cap does not fit how you type. |
 | `role_overrides.<role>.claude_args` | Flags for one role. They REPLACE `claude_args` for that role, so repeat the shared flags, then add e.g. `--model <model>` or `--settings <path>` for a per-agent settings file. | One role needs a different model or its own settings. |
 | `beads.stuck_after` | How long a bead may sit before it reads stuck, as a duration such as `20m`. One hour when absent; a value that is not a duration above zero fails the load. The pane header, the overlay, `initech progress` and the app all count by it, and so do the rig panel's stale alarm and the rig numbers' no-move count, which take twenty minutes when the key is absent; `initech progress --stuck-after <duration>` asks for another value for one run. | The rig's beads move faster or slower than one an hour. |
 | `beads.idle_after` | How long the owner's pane of an `in_progress` bead may sit idle before the bead reads idle-owner, as a duration such as `30m`. Twenty minutes when absent; a value that is not a duration above zero fails the load. The pane header, the overlay, `initech progress` (whose JSON the app service carries) and the line to super all read by it. | The rig's agents think longer or shorter than twenty minutes between steps. |
@@ -457,8 +457,8 @@ The sender's `initech send` returns once the message is actually delivered.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `typing_hold_quiet_s` | `2` | Seconds without a keystroke in that pane before a waiting message goes. `0` turns the hold off: messages go at once. |
-| `typing_hold_max_s` | `15` | The longest a message waits; then it goes even if you are still typing. Must be at least `typing_hold_quiet_s`. |
+| `typing_hold_quiet_s` | `4` | Seconds without a keystroke in that pane before a waiting message goes. `0` turns the hold off: messages go at once. |
+| `typing_hold_max_s` | `30` | The longest a message waits; then it goes even if you are still typing. Must be at least `typing_hold_quiet_s`. |
 
 ```yaml
 typing_hold_quiet_s: 3

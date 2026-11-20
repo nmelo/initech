@@ -461,7 +461,11 @@ func TestSendCommand_StalledTUI_ClientGivesUpOnItsOwnDeadline(t *testing.T) {
 	origSend := sendActionTimeout
 	ipcCallTimeout = 100 * time.Millisecond
 	sendActionTimeout = 100 * time.Millisecond
-	t.Cleanup(func() { ipcCallTimeout = origCall; sendActionTimeout = origSend })
+	// The cap at the base the budget was sized for, so the deadline is the
+	// shrunk 100 ms alone (ini-wzjc: the default cap adds 15 s).
+	origHold := typingHoldMaxBestEffort
+	typingHoldMaxBestEffort = func() int { return 15 } // config.TypingHoldBudgetBaseS
+	t.Cleanup(func() { ipcCallTimeout = origCall; sendActionTimeout = origSend; typingHoldMaxBestEffort = origHold })
 
 	rootCmd.SetArgs([]string{"send", "eng2", "hello world"})
 	defer rootCmd.SetArgs(nil)
@@ -601,7 +605,11 @@ func TestSendCommand_NoSocket(t *testing.T) {
 // and never shrinks below the resume-aware budget.
 func TestSendDeadline_GrowsWithATypingHoldCapAboveTheDefault(t *testing.T) {
 	if got := sendDeadline(15); got != sendActionTimeout {
-		t.Fatalf("default cap: %s, want the unchanged %s", got, sendActionTimeout)
+		t.Fatalf("the base cap: %s, want the unchanged %s", got, sendActionTimeout)
+	}
+	// ini-wzjc: the default cap is 30 s; the budget keeps its margin over it.
+	if got, want := sendDeadline(30), sendActionTimeout+15*time.Second; got != want {
+		t.Fatalf("default 30 s cap: %s, want %s", got, want)
 	}
 	if got := sendDeadline(5); got != sendActionTimeout {
 		t.Fatalf("smaller cap: %s, want the unchanged %s", got, sendActionTimeout)

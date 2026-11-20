@@ -7,11 +7,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Typing hold defaults, in seconds.
+// Typing hold defaults, in seconds: a message to a pane the operator is
+// typing in waits for a 4 s pause, and never longer than 30 s.
 const (
-	DefaultTypingHoldQuietS = 2
-	DefaultTypingHoldMaxS   = 15
+	DefaultTypingHoldQuietS = 4
+	DefaultTypingHoldMaxS   = 30
 )
+
+// TypingHoldBudgetBaseS is the typing-hold cap, in seconds, that the send
+// reply budgets were sized for (the CLI's 45 s, a forward's 40 s, a viewer's
+// 45 s). Each budget grows by the effective cap above it, so its margin over
+// a fully held send stays the same whatever the default cap is.
+const TypingHoldBudgetBaseS = 15
 
 // RawSeconds keeps a seconds value exactly as written, so a malformed value
 // reaches TypingHold (which falls back with a warning) instead of failing the

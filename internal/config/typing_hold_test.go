@@ -27,14 +27,16 @@ func TestTypingHold_FallsBackPerKeyWithOneWarningEach(t *testing.T) {
 		warnings     int
 		warnMentions string
 	}{
-		{"absent keys use defaults", "", 2, 15, 0, ""},
+		// ini-wzjc: the defaults are a 4 s pause and a 30 s cap (were 2 and 15).
+		{"absent keys use defaults", "", 4, 30, 0, ""},
 		{"valid values", "typing_hold_quiet_s: 3\ntyping_hold_max_s: 20\n", 3, 20, 0, ""},
-		{"zero quiet disables", "typing_hold_quiet_s: 0\n", 0, 15, 0, ""},
-		{"negative quiet", "typing_hold_quiet_s: -1\n", 2, 15, 1, `typing_hold_quiet_s: "-1"`},
-		{"string max", "typing_hold_max_s: soon\n", 2, 15, 1, `typing_hold_max_s: "soon"`},
-		{"fractional quiet", "typing_hold_quiet_s: 1.5\n", 2, 15, 1, `typing_hold_quiet_s: "1.5"`},
-		{"max below quiet", "typing_hold_quiet_s: 5\ntyping_hold_max_s: 3\n", 5, 15, 1, "typing_hold_max_s: 3 is below"},
-		{"max default still below quiet", "typing_hold_quiet_s: 20\n", 20, 20, 1, "using 20"},
+		{"set values below the defaults are kept", "typing_hold_quiet_s: 1\ntyping_hold_max_s: 10\n", 1, 10, 0, ""},
+		{"zero quiet disables", "typing_hold_quiet_s: 0\n", 0, 30, 0, ""},
+		{"negative quiet", "typing_hold_quiet_s: -1\n", 4, 30, 1, `typing_hold_quiet_s: "-1"`},
+		{"string max", "typing_hold_max_s: soon\n", 4, 30, 1, `typing_hold_max_s: "soon"`},
+		{"fractional quiet", "typing_hold_quiet_s: 1.5\n", 4, 30, 1, `typing_hold_quiet_s: "1.5"`},
+		{"max below quiet", "typing_hold_quiet_s: 5\ntyping_hold_max_s: 3\n", 5, 30, 1, "typing_hold_max_s: 3 is below"},
+		{"max default still below quiet", "typing_hold_quiet_s: 40\n", 40, 40, 1, "using 40"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

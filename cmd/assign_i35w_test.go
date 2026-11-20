@@ -155,8 +155,10 @@ func TestIPCDeadline_SendReadyOutwaitsTheServerSettleBound(t *testing.T) {
 	if got := ipcDeadlineFor("send_ready"); got <= tui.StartupSettleBound {
 		t.Fatalf("send_ready deadline %s does not exceed the server's settle bound %s", got, tui.StartupSettleBound)
 	}
-	if got := ipcDeadlineFor("send"); got != sendActionTimeout {
-		t.Fatalf("send deadline changed to %s", got)
+	// A send outwaits the typing-hold cap (ini-wzjc: the default is 30 s,
+	// 15 s above the base the 45 s was sized for).
+	if got, want := ipcDeadlineFor("send"), sendDeadline(typingHoldMaxBestEffort()); got != want {
+		t.Fatalf("send deadline changed to %s, want %s", got, want)
 	}
 	if got := ipcDeadlineFor("peek"); got != ipcCallTimeout {
 		t.Fatalf("an ordinary action's deadline changed to %s", got)

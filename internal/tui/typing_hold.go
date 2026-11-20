@@ -192,20 +192,22 @@ func (d *Daemon) deliverOffReader(sends *targetSerializer, p *Pane, cmd ControlC
 }
 
 // forwardSendWait is how long a forward waits for its peer to confirm: the
-// base budget, plus any cap above the default (this machine's setting is the
+// base budget, plus the cap above the one it was sized for (this machine's setting is the
 // stand-in for the peer's; the guide asks for the same value on both).
 func forwardSendWait() time.Duration {
-	return forwardSendTimeout + holdCapAboveDefault()
+	return forwardSendTimeout + holdCapAboveBudgetBase()
 }
 
 // sendReplyWait is how long a viewer waits for the reply to a send it made
 // through the control stream: the reply comes after any typing hold.
 func sendReplyWait() time.Duration {
-	return 45*time.Second + holdCapAboveDefault()
+	return 45*time.Second + holdCapAboveBudgetBase()
 }
 
-func holdCapAboveDefault() time.Duration {
-	return max(0, currentTypingHold().max-config.DefaultTypingHoldMaxS*time.Second)
+// holdCapAboveBudgetBase is how far the effective typing-hold cap is above
+// the cap the reply budgets were sized for (config.TypingHoldBudgetBaseS).
+func holdCapAboveBudgetBase() time.Duration {
+	return max(0, currentTypingHold().max-config.TypingHoldBudgetBaseS*time.Second)
 }
 
 // targetSerializer runs functions one at a time per key, in submission order,
