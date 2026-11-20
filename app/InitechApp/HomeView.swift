@@ -11,7 +11,6 @@ struct MainView: View {
     let forget: () -> Void
     /// tab is the screen the list side shows, chosen in its bottom bar.
     @State private var tab: ListTab = .panes
-    @State private var showProgress = false
     @State private var blockersFocus: BlockerFocus?
     /// opened is false until home's first reload, before which a tap that
     /// opened the app cannot tell a running pane from a gone one.
@@ -24,7 +23,7 @@ struct MainView: View {
         // hidden. On iPad the list always sits beside the pane (balanced, all
         // columns): with no bar there is no button to bring a hidden list back.
         NavigationSplitView(columnVisibility: .constant(.all)) {
-            HomeList(home: home, push: push, inbox: inbox, tab: $tab, showProgress: $showProgress,
+            HomeList(home: home, push: push, inbox: inbox, tab: $tab,
                      blockersFocus: blockersFocus, besideThePane: sizeClass == .regular)
                 .toolbar(.hidden, for: .navigationBar)
         } detail: {
@@ -41,9 +40,6 @@ struct MainView: View {
         .navigationSplitViewStyle(.balanced)
         .tint(Theme.red)
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showProgress) {
-            NavigationStack { ProgressScreen(home: home) }
-        }
         .task {
             await home.reload()
             home.startFeed()
@@ -71,9 +67,8 @@ extension MainView {
     /// screen is what is on screen for the push rule: a sheet over
     /// everything, else the open pane.
     var screen: OnScreen {
-        if showProgress { return .other }
         if tab == .blockers { return .waitingList }
-        if tab == .rigs { return .other }
+        if tab == .rigs || tab == .progress { return .other }
         return home.selection.map { .pane($0) } ?? .other
     }
 
@@ -82,7 +77,6 @@ extension MainView {
     /// push with no data.
     func open(_ route: PushRoute) async {
         inbox.tapped = nil
-        showProgress = false
         switch route {
         case .home:
             tab = .panes
@@ -110,7 +104,7 @@ extension MainView {
         switch screen {
         case .rigs: tab = .rigs
         case .blockers: tab = .blockers
-        case .progress: showProgress = true
+        case .progress: tab = .progress
         case let .pane(rig, pane): home.open(PaneRef(rig: rig, pane: pane))
         }
     }
@@ -120,7 +114,7 @@ extension MainView {
 /// ListTab is a screen of the list side's bottom bar; its name is what the
 /// prompt header shows.
 enum ListTab: String, Equatable {
-    case panes, rigs, blockers
+    case panes, rigs, blockers, progress
 }
 
 /// HomeList is the list side of the app, drawn as a terminal would: a prompt
@@ -133,7 +127,6 @@ struct HomeList: View {
     @ObservedObject var push: PushRegistrar
     @ObservedObject var inbox: PushInbox
     @Binding var tab: ListTab
-    @Binding var showProgress: Bool
     /// blockersFocus is the rig and bead a tapped push named, for Blockers to show.
     var blockersFocus: BlockerFocus?
     let besideThePane: Bool
@@ -147,6 +140,7 @@ struct HomeList: View {
             case .panes: panesList
             case .rigs: rigsList
             case .blockers: BlockersScreen(home: home, focus: blockersFocus, arrived: inbox.arrived)
+            case .progress: ProgressScreen(home: home)
             }
         }
         .background(Theme.bg.ignoresSafeArea())
@@ -261,9 +255,7 @@ struct HomeList: View {
             Spacer()
             key(.blockers, "3 blockers", spoken: "Blockers", count: home.blockerCount)
             Spacer()
-            Button("4 progress") { showProgress = true }
-                .fixedSize()
-                .accessibilityLabel("Progress")
+            key(.progress, "4 progress", spoken: "Progress")
         }
         // Beside the pane the list is a narrow column: smaller type, so no key is cut short.
         .font(Theme.mono(besideThePane ? .caption2 : .footnote))

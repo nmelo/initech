@@ -89,6 +89,9 @@ struct ProgressCard: Identifiable, Equatable, Sendable {
     }
     var rig: String
     var effort: String
+    /// closed and total are the effort's beads, for the bar beside the pace.
+    var closed: Int
+    var total: Int
     /// pace is "<closed> of <total> closed · <n> in the last <h> h".
     var pace: String
     /// worked is "worked by engineers <n> · writing or review only <m>".
@@ -110,6 +113,8 @@ struct ProgressCard: Identifiable, Equatable, Sendable {
     init(_ r: ProgressReport) {
         rig = r.rig
         effort = r.prefix.isEmpty ? "whole rig" : r.prefix
+        closed = r.closed
+        total = r.total
         pace = "\(r.closed) of \(r.total) closed · \(r.closedRecent.count) in the last \(r.hours) h"
         worked = "worked by engineers \(r.workedByEngineers) · writing or review only \(r.writingReviewOnly)"
         beads = r.beads.map { b in

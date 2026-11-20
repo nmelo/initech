@@ -59,11 +59,11 @@ struct BlockersScreen: View {
     }
 }
 
-/// ProgressScreen is the Progress sheet; while open it takes the feed from home.
+/// ProgressScreen is the Progress screen of the bottom bar; while it shows it
+/// takes the feed from home.
 struct ProgressScreen: View {
     let home: HomeModel
     @StateObject private var model: ProgressModel
-    @Environment(\.dismiss) private var dismiss
 
     init(home: HomeModel) {
         self.home = home
@@ -72,7 +72,6 @@ struct ProgressScreen: View {
 
     var body: some View {
         EffortProgressView(progress: model)
-            .toolbar { Button("Done") { dismiss() } }
             .onAppear { home.listeners["progress"] = model }
             .onDisappear { home.listeners["progress"] = nil }
     }

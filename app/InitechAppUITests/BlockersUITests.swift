@@ -83,14 +83,14 @@ final class BlockersUITests: XCTestCase {
         }
     }
 
-    // AC3: the Progress button shows the service's numbers, and Done closes it.
+    // AC3: the Progress key shows the service's numbers, and the Panes key goes back.
     func testProgressOpensWithTheServiceNumbers() {
         launch()
         app.buttons["Progress"].tap()
         XCTAssertTrue(element("4 of 11 closed · 2 in the last 3 h").waitForExistence(timeout: 10))
         XCTAssertTrue(element("worked by engineers 3 · writing or review only 1").exists)
-        app.buttons["Done"].tap()
-        XCTAssertTrue(element("eng6 on the app").waitForExistence(timeout: 5), "Done did not close the sheet")
+        app.buttons["Panes"].tap() // Progress is a screen of the bottom bar: back to Panes
+        XCTAssertTrue(element("eng6 on the app").waitForExistence(timeout: 5), "the Panes key did not bring the list back")
     }
 
     private func element(_ text: String) -> XCUIElement {

@@ -33,13 +33,15 @@ enum Theme {
 /// and orange once it runs high.
 struct ContextBarView: View {
     let percent: Int
+    /// done says the bar measures work finished, where more is better: it stays green.
+    var done = false
 
     var body: some View {
         let meter = ContextMeter(percent: percent)
         HStack(spacing: 1.5) {
             ForEach(0..<ContextMeter.blocks, id: \.self) { i in
                 Rectangle()
-                    .fill(i < meter.filled ? (meter.high ? Theme.orange : Theme.green) : Theme.faint)
+                    .fill(i < meter.filled ? (meter.high && !done ? Theme.orange : Theme.green) : Theme.faint)
                     .frame(width: 5, height: 10)
             }
         }
