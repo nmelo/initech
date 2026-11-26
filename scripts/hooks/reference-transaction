@@ -10,13 +10,19 @@
 #
 # In the "prepared" phase git hands us "<old> <new> <ref>" per update, and a
 # non-zero exit aborts the whole transaction. For each refs/heads/* update we
-# scan the lines it adds: git diff old new for a branch that existed, and the
-# commits on no other branch for a new one; and the message of each new commit
-# that no remote-tracking branch holds yet. A deletion adds nothing. Tags,
+# scan the commits this update brings that are not on any remote: the lines
+# each one adds, and its message. For a branch that existed those are
+# old..new with no remote-tracking ref holding them; for a new branch, the
+# commits of new that no branch and no remote-tracking ref holds. A commit
+# already on a remote is not this checkout's to publish, so a pull, a branch
+# moved back, or a branch cut from origin/main never blocks on its lines.
+# A merge is read as a dense combined diff (--cc): only what it adds beyond
+# all of its parents, never what it merged in. A deletion adds nothing. Tags,
 # remote-tracking refs, HEAD, stash and rebase bookkeeping refs are skipped.
 # A file the update does not touch is never read, so an old line elsewhere in
 # the tree never blocks a commit; scripts/private-scan.sh --tree is the
-# whole-tree report.
+# whole-tree report. An update that brings no commit still runs the scanner,
+# on nothing, so a missing list refuses it; a read that fails refuses too.
 #
 # scripts/private-scan.sh holds the rules: the list's place, what a hit
 # prints (path:line and the pattern's number, never the text), and that a
@@ -31,24 +37,49 @@ if [ ! -f "$scan" ]; then
 	exit 1
 fi
 
+# plain turns a merge's --cc hunks into the unified form private-scan.sh
+# reads. A --cc hunk header has one "@" more than its parents and a marker
+# column per parent: a line marked "+" against every parent is added; one
+# marked "-" in any column is not in the merge; any other came from a parent
+# and is context. A plain patch passes through unchanged.
+plain='
+/^diff / { n = 0; print; next }
+/^@@/ {
+	match($0, /^@+/)
+	if (RLENGTH == 2) { n = 1; print; next }
+	n = RLENGTH - 1
+	print "@@ -0,0 " $(n + 2) " @@"
+	next
+}
+n > 1 && /^\\/ { print; next }
+n > 1 {
+	m = substr($0, 1, n)
+	if (m ~ /-/) next
+	if (m ~ /^\+*$/) print "+" substr($0, n + 1)
+	else print " " substr($0, n + 1)
+	next
+}
+{ print }
+'
+
 status=0
 while read -r old new ref; do
 	case "$ref" in refs/heads/*) ;; *) continue ;; esac
 	case "$new" in *[!0]*) ;; *) continue ;; esac
+	# The commits this update brings that are not on any remote.
+	case "$old" in
+	*[!0]*) set -- "$old..$new" --not --remotes ;;
+	*) set -- "$new" --not --branches --remotes ;;
+	esac
+	if ! commits=$(git rev-list "$@") ||
+		! patches=$(git log -p --cc --no-color --no-ext-diff --unified=0 --format= "$@"); then
+		echo "reference-transaction: cannot read the commits of $ref; refused the update" >&2
+		status=1
+		continue
+	fi
 	{
-		case "$old" in
-		*[!0]*)
-			git diff --no-color --no-ext-diff --unified=0 "$old" "$new"
-			commits=$(git rev-list "$old..$new" --not --remotes)
-			;;
-		*)
-			git log -p --no-color --no-ext-diff --unified=0 --format= "$new" --not --branches
-			commits=$(git rev-list "$new" --not --branches --remotes)
-			;;
-		esac
-		# The message of each new commit travels with it. Only commits on no
-		# remote-tracking branch: one already published is not this
-		# checkout's to publish, so a pull that brings it never blocks.
+		[ -z "$patches" ] || printf '%s\n' "$patches" | awk "$plain"
+		# The message of each new commit travels with it.
 		for c in $commits; do
 			printf '+++ b/commit %s (message)\n@@ -0,0 +1 @@\n' "$(git rev-parse --short "$c")"
 			git log -1 --format=%B "$c" | sed 's/^/+/'

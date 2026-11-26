@@ -283,10 +283,11 @@ install-hooks:
 
 # private-scan: the whole-tree report of terms that belong only to a private
 # rig (scripts/private-scan.sh --tree). The commit guard is the versioned
-# reference-transaction hook, which scans what each branch update adds; this
-# reads every tracked file, for the release step and after a cleanup. It
-# prints path:line and the pattern's number, never the text, and exits 1 on a
-# hit or with no list at ~/.config/initech/private-terms.
+# reference-transaction hook, which scans the commits each branch update
+# brings that are not on any remote; this reads every tracked file, for the
+# release step and after a cleanup. It prints path:line and the pattern's
+# number, never the text, and exits 1 on a hit or with no list at
+# ~/.config/initech/private-terms.
 private-scan:
 	@sh scripts/private-scan.sh --tree
 
