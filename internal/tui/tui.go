@@ -2002,11 +2002,17 @@ func (t *TUI) handlePeerPaneAdded(peerName string, pane PaneView) {
 // inverted and the right side became a grid so the focused pane keeps every
 // other agent visible, not just a sliver of each).
 func calcMainVertical(n, screenW, screenH int) []Region {
+	return calcSplitAt(n, screenW, screenH, 40)
+}
+
+// calcSplitAt is calcMainVertical with the left column at leftPct percent of
+// the width instead of 40.
+func calcSplitAt(n, screenW, screenH, leftPct int) []Region {
 	if n <= 1 {
 		return []Region{{X: 0, Y: 0, W: screenW, H: screenH}}
 	}
 
-	leftW := screenW * 40 / 100
+	leftW := screenW * leftPct / 100
 	rightW := screenW - leftW
 	rightCount := n - 1
 
@@ -2031,12 +2037,19 @@ func calcMainVertical(n, screenW, screenH int) []Region {
 	return regions
 }
 
-// calcLiveFocusSplit is calcMainVertical with one difference: the left
-// column keeps the Focus split's 40% even when nothing is on the right. The
+// calcLiveFocusSplit is calcMainVertical with two differences. The left
+// column keeps the Focus split's 40% even when nothing is on the right: the
 // live focus split's right side is often empty (no other agent working), and
 // a held pane that jumped to full width every time the fleet went quiet would
 // be the layout moving under the operator for no action of theirs (ini-92wm).
+// And with exactly two showing, the held pane and one agent on the right, the
+// two share the width half and half, so the one working agent is as readable
+// as the held one (ini-ftll); three or more keep the 40% column. n is the
+// count showing now: the layout is recomputed whenever the right set changes.
 func calcLiveFocusSplit(n, screenW, screenH int) []Region {
+	if n == 2 {
+		return calcSplitAt(n, screenW, screenH, 50)
+	}
 	if n > 1 {
 		return calcMainVertical(n, screenW, screenH)
 	}

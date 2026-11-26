@@ -98,8 +98,9 @@ func TestLiveList_ABackgroundAgentKeepsItsBoxUntilTheJobEnds(t *testing.T) {
 func TestLiveFocus_ABackgroundAgentStaysOnTheRight(t *testing.T) {
 	tui, s := newTestTUIWithScreen("a", "b")
 	// Wide enough that b's right-side region holds the 160-column capture
-	// without wrapping its footer.
-	s.SetSize(300, 60)
+	// without wrapping its footer: with a and b alone the live focus split
+	// gives each half the width (ini-ftll), so b's region is 170 of 340.
+	s.SetSize(340, 60)
 	tui.layoutState.Mode = LayoutGrid
 	tui.layoutState.Focused = "a"
 	b := newEmuPane("b", 160, 45)
