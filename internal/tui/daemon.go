@@ -1251,11 +1251,18 @@ func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn, peerName string) {
 		if cur.WakeOnStreamInput() {
 			continue // Swallowed as a wake gesture, same as a local keystroke.
 		}
-		if !isMouseOrFocusReport(buf[:n]) {
-			cur.noteOperatorKey() // typing in another window holds messages too
-		}
-		cur.writeInput(buf[:n])
+		cur.streamInput(buf[:n])
 	}
+}
+
+// streamInput is another window's raw input to this pane: typing in it
+// holds messages too, and it is held with the rest of the operator's input
+// while a send types here (ini-q0fy).
+func (p *Pane) streamInput(b []byte) {
+	if !isMouseOrFocusReport(b) {
+		p.noteOperatorKey()
+	}
+	p.operatorInput(operatorItem{raw: b})
 }
 
 // currentPane returns the pane currently serving name, under panesMu. The

@@ -3,7 +3,6 @@ package tui
 import (
 	"errors"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/x/xpty"
@@ -73,9 +72,8 @@ type paneInput struct {
 	current  *inputItem // The write in progress.
 	draining bool
 	closed   bool
-	wedged   bool         // Set by a full queue or a send's bound; cleared when the stuck write returns.
-	dropped  int          // Items dropped this wedge. Keys and emulator replies share the pipe, so one count.
-	pending  atomic.Int32 // Writes on their way here: a paste waits its turn for sendMu off main.
+	wedged   bool // Set by a full queue or a send's bound; cleared when the stuck write returns.
+	dropped  int  // Items dropped this wedge. Keys and emulator replies share the pipe, so one count.
 }
 
 // writeInput queues data for the child and returns at once. It never blocks, so
@@ -283,7 +281,7 @@ func (p *Pane) awaitInputDrained(d time.Duration) bool {
 	deadline := time.Now().Add(d)
 	for {
 		p.input.mu.Lock()
-		idle := len(p.input.q) == 0 && p.input.current == nil && p.input.pending.Load() == 0
+		idle := len(p.input.q) == 0 && p.input.current == nil
 		p.input.mu.Unlock()
 		if idle {
 			return true

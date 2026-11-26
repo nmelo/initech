@@ -468,7 +468,14 @@ typing_hold_max_s: 20
 A value that is negative, not a whole number, or a max below the quiet time is ignored: that
 key uses its default (a max below the quiet time becomes the quiet time if the default is still
 shorter) and the log names the key and the value. Typing in any window counts,
-mouse input does not. Your own pastes, from any window, are never held.
+mouse input does not. Your own pastes, from any window, never wait for a pause.
+
+While a message is being typed into a pane, from its first key to its Enter (or until it fails),
+your own input to that pane waits: keys, Shift+Enter, pastes and clicks in this window, input from
+another window, and text from the app or the web companion. Then it reaches the pane in the order
+you produced it, after the message is sent, so nothing you type joins the message. The wait lasts
+as long as typing the message and confirming its Enter. Your keys still count as typing, so a
+message behind this one waits for your next pause.
 
 For a send to an agent on another machine, the sending machine sizes its wait from its own
 `typing_hold_max_s`, so give both machines the same value.

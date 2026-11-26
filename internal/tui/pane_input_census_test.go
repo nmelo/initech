@@ -23,7 +23,6 @@ import (
 var sendMuTakers = map[string]string{
 	"Pane.drainAgentQueue":          "off-main held-mail drain goroutine",
 	"Pane.deliverClean":             "the send path: IPC, forward and drain goroutines",
-	"Pane.FlushPaste":               "inside its own goroutine, never on the caller's",
 	"Pane.closeOffMain":             "inside the teardown goroutine",
 	"TUI.restartOffMain":            "the restart goroutine",
 	"TUI.handleIPCStop":             "an IPC connection goroutine",
@@ -39,7 +38,7 @@ var sendMuTakers = map[string]string{
 
 // goroutineOnlySendMuTakers must take the lock only inside a func literal: their
 // own body runs on the main goroutine.
-var goroutineOnlySendMuTakers = map[string]bool{"Pane.FlushPaste": true, "Pane.closeOffMain": true}
+var goroutineOnlySendMuTakers = map[string]bool{"Pane.closeOffMain": true}
 
 // mainPathFuncs run on the main goroutine, or are called straight from it. None
 // may take sendMu, write to a child or close a pane in its own body.

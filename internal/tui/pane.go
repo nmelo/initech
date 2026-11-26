@@ -302,6 +302,7 @@ type Pane struct {
 	attn                  *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
 	stashModeLogged       atomic.Bool       // The pane logged once that its terminal mode could not be read (stash_mode.go).
 	input                 paneInput         // Every write to the child goes through this queue (pane_input.go).
+	opHold                operatorHold      // Operator input held while a send types (operator_hold.go).
 	closingOnce           sync.Once         // Makes closingCh.
 	closedOnce            sync.Once         // Closes closingCh once.
 	closingCh             chan struct{}     // Closed when the pane starts closing; use closingC.
@@ -805,7 +806,9 @@ func (p *Pane) readLoop() {
 // responseLoop reads encoded sequences from the emulator (responses to
 // DSR, DA, SendKey, etc.) and writes them to the PTY.
 func (p *Pane) responseLoop() {
-	buf := make([]byte, 256)
+	// One read per pipe write up to a paste's size, so an operator paste
+	// written into the pipe stays one queue item (ini-q0fy).
+	buf := make([]byte, inputChunkSize)
 	for {
 		n, err := p.emu.Read(buf)
 		if n > 0 {
@@ -852,10 +855,10 @@ func (p *Pane) SendKey(ev *tcell.EventKey) {
 	// bytes must arrive in a single read() on stdin. A single ptmx.Write()
 	// guarantees this for small writes on a PTY.
 	if ev.Key() == tcell.KeyEnter && ev.Modifiers()&tcell.ModShift != 0 {
-		p.writeInput([]byte("\x1b[13;2u"))
+		p.operatorInput(operatorItem{raw: []byte("\x1b[13;2u")})
 		return
 	}
-	p.emu.SendKey(kpe)
+	p.operatorInput(operatorItem{key: kpe})
 }
 
 // SendPaste writes a bracketed paste marker to the PTY.
@@ -869,9 +872,9 @@ func (p *Pane) SendPaste(start bool) {
 	}
 	p.noteOperatorKey()
 	if start {
-		p.writeInput([]byte("\x1b[200~"))
+		p.operatorInput(operatorItem{raw: []byte("\x1b[200~")})
 	} else {
-		p.writeInput([]byte("\x1b[201~"))
+		p.operatorInput(operatorItem{raw: []byte("\x1b[201~")})
 	}
 }
 
@@ -881,22 +884,14 @@ func (p *Pane) FlushPaste(content []byte) {
 	if len(content) == 0 || !p.hasPTY() {
 		return
 	}
-	// A copy: the goroutine below outlives this call and the caller reuses its
-	// paste buffer.
-	item := append([]byte(nil), content...)
+	item := content
 	if !p.noBracketedPaste {
 		item = bracketedBody(string(content))
 	}
-	// One item, so nothing lands inside the paste, and off the main goroutine,
-	// which never takes sendMu: a send holds it across its body and its Enter,
-	// and the paste must not land between them.
-	p.input.pending.Add(1)
-	go func() {
-		defer p.input.pending.Add(-1)
-		p.sendMu.Lock()
-		defer p.sendMu.Unlock()
-		p.writeInput(item)
-	}()
+	// One write, so nothing lands inside the paste. A send typing into this
+	// pane holds it with the operator's keys, in arrival order, until its
+	// Enter (ini-q0fy), so it never lands between a body and its Enter.
+	p.operatorInput(operatorItem{raw: item})
 }
 
 // resizeSettleCount is the number of render frames to skip after a resize.
@@ -1143,7 +1138,7 @@ func (p *Pane) ForwardMouse(ev uv.MouseEvent) {
 	// item 4 measures whether it selects an option row directly -- so it must
 	// not be treated as more innocent than a keystroke.
 	p.noteOperatorInput()
-	p.emu.SendMouse(ev)
+	p.operatorInput(operatorItem{mouse: ev})
 }
 
 // ForwardWheel translates pane-local content coordinates to emulator

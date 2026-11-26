@@ -695,6 +695,10 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 		mode = "raw"
 	}
 	LogDebug("inject", "send start", "pane", pane.Name(), "agent_type", pane.AgentType(), "mode", mode, "bytes", len(text), "enter", enter)
+	// From the first byte below to the end of this send, however it ends,
+	// the operator's input to this pane waits, then follows in order
+	// (ini-q0fy): a key typed now must not join the body.
+	defer pane.holdOperatorInput()()
 	// Stash any partially typed input before injecting so that the incoming
 	// message doesn't corrupt text the user was composing (ini-gd0). Codex/raw
 	// panes skip this because they inject directly to the PTY instead of through

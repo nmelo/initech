@@ -92,6 +92,9 @@ func (p *Pane) typeAgentMessage(text string, enter bool, before agentFrame) Send
 	}
 	r := p.agentReader()
 	start := time.Now()
+	// The operator's input to this pane waits from the first byte to the end
+	// of this send, then follows in order (ini-q0fy).
+	defer p.holdOperatorInput()()
 	wrote := p.writeBody(bracketedBody(text), "agent-bracketed")
 	if wrote != childWritten {
 		if wrote == childNotReached {
