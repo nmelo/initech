@@ -28,7 +28,6 @@ var overviewCoverage = map[string]string{
 	"peek": "One screen for the team", "patrol": "One screen for the team", "status": "One screen for the team",
 	"assign": "Work as beads", "deliver": "Work as beads", "bead": "Work as beads",
 	"send": "Messages that never trample you", "dnd": "Messages that never trample you",
-	"interrupt": "Messages that never trample you", "keystroke": "Messages that never trample you",
 	"watch":     "Watches",
 	"progress":  "Progress",
 	"cron":      "Scheduled jobs",
@@ -52,6 +51,8 @@ var overviewPlumbing = map[string]bool{"completion": true, "help": true, "versio
 var notInOverview = map[string]string{
 	"last":      "reads an agent's past messages from its session log; the messages bullet is about sending",
 	"recording": "works with PTY recordings and their replay; no bullet speaks of recording or replay",
+	"interrupt": "presses a key into the pane at once, on purpose; the messages bullet is about waiting until the pane can take one",
+	"keystroke": "presses a key into the pane at once, on purpose; the messages bullet is about waiting until the pane can take one",
 }
 
 // agentTypeNames is how the overview names each agent type in internal/config.
