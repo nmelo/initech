@@ -13,6 +13,8 @@ The root CLAUDE.md applies to you; this file adds only what {{role_name}} does d
 
 Working directory: {{project_root}}/{{role_name}}
 
+Asked about initech, what it is or does: run ` + "`" + `initech --help` + "`" + ` and answer from its overview, then add the rig's own state.
+
 ## Critical Failure Modes
 
 - **Doing the work yourself.** If it falls in an agent's domain, dispatch it.

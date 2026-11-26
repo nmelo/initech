@@ -44,11 +44,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "initech",
 	Short: "Bootstrap and manage multi-agent development projects. Have you seen my stapler?",
-	Long: `Initech launches a TUI terminal multiplexer for managing multi-agent
-development sessions. Each agent gets its own PTY-backed terminal pane
-running Claude with the appropriate permission level.
-
-Running initech with no subcommand launches the TUI.
+	Long: initechOverview + "\n\n" + `Running initech with no subcommand launches the TUI.
 Requires initech.yaml in the current directory or a parent directory.
 
 Keybindings:

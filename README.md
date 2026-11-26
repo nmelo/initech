@@ -10,7 +10,22 @@
 
 <strong>No tmux required!!</strong>
 
-**initech** is an agent runtime for directing teams of AI coding agents. Each agent gets its own PTY-backed pane, reliable IPC messaging, and bead-aware state tracking — all in one TUI. Works with Claude Code, Codex, Amp, or any CLI.
+<!-- overview:start -->
+initech runs a team of AI coding agents for you, each in its own terminal pane with a role, and keeps them coordinated so that you step in only for decisions.
+
+- **Agents on more than one tool.** Claude Code by default, plus Codex and OpenCode panes, and agy or any other command as a generic pane. A message to any of them waits until the pane can take it.
+- **One screen for the team.** A grid of panes with a status line each, a rig panel across the top with what needs you (blocked work, stale work, prompts waiting for an answer) and the rig's numbers, and layouts you switch with a key (focus, live, zoom, a second window).
+- **Work as beads.** Every task is a bead in the bd tracker; agents claim, deliver and hand work on through it, and each pane shows its bead and its effort's pace.
+- **Messages that never trample you.** `initech send` types into a pane only when its box is free, waits while you type in it, or while an agent is in do-not-disturb, and gives every held message a receipt you can withdraw.
+- **Watches.** An agent hands initech a wait (a bead reaching a status, a comment, a send delivered, or a plain deadline) with a reason and a deadline, and gets one line back when it fires or misses. Option+T shows every watch in the rig.
+- **Progress.** `initech progress` shows how an effort is moving: beads in flight, closes per hour, the critical path, and what is stuck or waiting.
+- **Scheduled jobs.** `initech cron` puts a message or a short command into a pane on a schedule.
+- **The list strip.** An agent pins a short list above its pane's bottom bar, such as what waits on you.
+- **Your phone and tablet.** `initech app-serve` serves the initech iPhone and iPad app over your tailnet: your rigs and panes, what waits on you, progress, and a message to any agent.
+- **Care of the machine.** Suspend and resume agents to free memory, a machine ceiling on how many run at once, `initech compact` to shrink an agent's context, and restarts.
+- **More than one machine.** `initech serve` and `remote` run agents on another machine and show them here.
+- **A team with roles.** super, pm, engineers, QA and a shipper, each with a charter, and one set of rules in the root CLAUDE.md.
+<!-- overview:end -->
 
 ## Why
 
