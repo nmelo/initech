@@ -8,9 +8,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-// TestBackgroundTint_RunningShowsGreen: a pane that just produced output (and is
-// therefore StateRunning) gets the green tint.
-func TestBackgroundTint_RunningShowsGreen(t *testing.T) {
+// TestBackgroundTint_RunningShowsTheTint: a pane that just produced output (and is
+// therefore StateRunning) gets the running tint.
+func TestBackgroundTint_RunningShowsTheTint(t *testing.T) {
 	p := &Pane{alive: true}
 	p.lastOutputTime = time.Now()
 	p.updateActivity() // StateRunning -> bumps the tint hold
@@ -133,7 +133,7 @@ func TestTintStyle_FillsDefaultBgOnly(t *testing.T) {
 
 // TestTint_SurvivesUnfocusedDimming confirms the orthogonality AC: an unfocused
 // running pane keeps its tint. dimStyle preserves background, and the tint is
-// applied before dimming, so a background running pane still shows the green
+// applied before dimming, so a background running pane still shows the tint
 // (just with dimmed foreground text).
 func TestTint_SurvivesUnfocusedDimming(t *testing.T) {
 	tinted := tintStyle(tcell.StyleDefault, runningTintColor)
@@ -154,7 +154,7 @@ func TestTintStyle_NoTintIsNoOp(t *testing.T) {
 
 // TestRenderCellRow_TintsDefaultBgPreservesColored is the end-to-end AC-1 check:
 // render a row with a default-bg cell and an agent-colored-bg cell through the
-// real render path; the plain cell gets the green, the colored cell keeps its bg.
+// real render path; the plain cell gets the tint, the colored cell keeps its bg.
 func TestRenderCellRow_TintsDefaultBgPreservesColored(t *testing.T) {
 	emu := vt.NewSafeEmulator(10, 2)
 	// "A" = default bg; "B" = explicit truecolor bg RGB(200,0,0) via SGR 48;2.

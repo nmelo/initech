@@ -50,7 +50,7 @@ var configExamples = []configExample{
 #   pressure_threshold: <percent>
 `},
 	{key: "running_pane_tint", text: `
-# Background tint behind running panes; the trained fleets use a lighter grey than the default:
+# Background tint behind running panes, '#1e2022' (a dark grey) by default; none turns it off:
 # running_pane_tint: '#1e2022'
 `},
 	{key: "typing_hold_quiet_s", text: `

@@ -472,13 +472,12 @@ func rowContainsStatusBar(e *vt.Emulator, row, cols int) bool {
 	return false
 }
 
-// defaultRunningTintColor is the built-in running-pane tint: a very dark,
-// desaturated near-black green (#0c120e) chosen so default white and dimmed-gray
-// agent text stay legible (panel bg for reference is RGB(20,25,40)). It is
-// deliberately subtle — a faint hint, not a wash — since the color is now
-// configurable via running_pane_tint (ini-eo2d, subtler than the originally
-// shipped #101e12).
-var defaultRunningTintColor = tcell.NewRGBColor(12, 18, 14)
+// defaultRunningTintColor is the built-in running-pane tint: #1e2022, the dark
+// neutral grey the trained fleets set (ini-zjdo), light enough to tell a
+// running pane from an idle one on the near-black idle background and dark
+// enough that white and dimmed-gray agent text stay legible. A rig changes it
+// with running_pane_tint, or turns it off with none.
+var defaultRunningTintColor = tcell.NewRGBColor(0x1e, 0x20, 0x22)
 
 // runningTintColor is the active running-pane tint, resolved from
 // running_pane_tint at TUI construction (or the default when unset). It is
@@ -503,11 +502,11 @@ func resolveRunningTintColor(raw string) (tcell.Color, string) {
 	if c, ok := parseHexColor(s); ok {
 		return c, ""
 	}
-	return defaultRunningTintColor, fmt.Sprintf("running_pane_tint %q is not a valid hex color (e.g. \"#0c120e\") or none/off; using default", raw)
+	return defaultRunningTintColor, fmt.Sprintf("running_pane_tint %q is not a valid hex color (e.g. \"#1e2022\") or none/off; using default", raw)
 }
 
 // parseHexColor parses a "#rrggbb" hex string into a tcell.Color. The leading
-// "#" and exactly six hex digits are required — a bare "0c120e" is rejected so
+// "#" and exactly six hex digits are required — a bare "1e2022" is rejected so
 // the config surface stays unambiguous.
 func parseHexColor(s string) (tcell.Color, bool) {
 	if len(s) != 7 || s[0] != '#' {
@@ -538,7 +537,7 @@ func tintStyle(style tcell.Style, tint tcell.Color) tcell.Style {
 	return style
 }
 
-// backgroundTint returns the green tint for this pane's default-bg cells, or
+// backgroundTint returns the running tint for this pane's default-bg cells, or
 // tcell.ColorDefault for no tint. The tint shows while the pane is alive,
 // not suspended, and within the tint hold window (bumped by updateActivity on
 // each StateRunning observation). Dead, suspended, and long-idle panes are

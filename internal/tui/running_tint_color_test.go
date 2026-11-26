@@ -18,16 +18,33 @@ func TestResolveRunningTintColor_AbsentUsesDefault(t *testing.T) {
 	}
 }
 
-// TestResolveRunningTintColor_DefaultIsSubtler pins the new shipped default
-// (#0c120e / RGB 12,18,14) and that it is subtler than the originally shipped
-// #101e12 (16,30,18) — ini-eo2d's whole point.
-func TestResolveRunningTintColor_DefaultIsSubtler(t *testing.T) {
-	want := tcell.NewRGBColor(12, 18, 14)
-	if defaultRunningTintColor != want {
-		t.Errorf("defaultRunningTintColor = %v, want %v (#0c120e)", defaultRunningTintColor, want)
+// TestResolveRunningTintColor_DefaultIsTheFleetGrey pins the shipped default
+// at the grey the trained fleets use, #1e2022 (ini-zjdo): a rig with no
+// running_pane_tint gets it, and a running pane's default-background cell is
+// drawn in it.
+func TestResolveRunningTintColor_DefaultIsTheFleetGrey(t *testing.T) {
+	want := tcell.NewRGBColor(0x1e, 0x20, 0x22)
+	c, warn := resolveRunningTintColor("")
+	if c != want || defaultRunningTintColor != want || warn != "" {
+		t.Errorf("unset tint = %v (default %v, warn %q), want #1e2022", c, defaultRunningTintColor, warn)
 	}
-	if defaultRunningTintColor == tcell.NewRGBColor(16, 30, 18) {
-		t.Error("default must be subtler than the originally shipped #101e12")
+	if _, bg, _ := tintStyle(tcell.StyleDefault, c).Decompose(); bg.Hex() != 0x1e2022 {
+		t.Errorf("a running pane's cell bg = #%06x, want #1e2022", bg.Hex())
+	}
+}
+
+// TestResolveRunningTintColor_ASetTintIsKept: a rig's own tint is never the
+// default's to replace, the old default included; none and off keep no tint.
+func TestResolveRunningTintColor_ASetTintIsKept(t *testing.T) {
+	for in, want := range map[string]tcell.Color{
+		"#123456": tcell.NewRGBColor(0x12, 0x34, 0x56),
+		"#0c120e": tcell.NewRGBColor(12, 18, 14), // the old default, set by hand
+		"none":    tcell.ColorDefault,
+		"OFF":     tcell.ColorDefault,
+	} {
+		if c, warn := resolveRunningTintColor(in); c != want || warn != "" {
+			t.Errorf("%q: %v (warn %q), want %v", in, c, warn, want)
+		}
 	}
 }
 

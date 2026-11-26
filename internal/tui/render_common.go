@@ -15,14 +15,14 @@ var trueBlack = tcell.NewRGBColor(0, 0, 0)
 // reserved leading cell (ini-z9a3, recolored ini-8a7). Always green
 // regardless of focus. Deliberately NOT red: red also means [dead] on this
 // same badge, and ColorRed here would make the two indistinguishable except
-// by position — a real collision, not a style preference (ini-8a7). Green
-// instead matches the hue family of the running-pane background tint, which
-// is driven by the same tintUntil field the square reads — but NOT the
-// tint's literal RGB (#0c120e, pane_render.go's defaultRunningTintColor):
-// that value is a deliberately near-black background wash, not a legible
-// foreground color, so reusing it here would reproduce the exact
-// invisible-glyph failure ini-6o3 exists to prevent, just in a different
-// color. Do not "fix" this back to red or to the literal tint RGB.
+// by position — a real collision, not a style preference (ini-8a7). Green is
+// the badge's own color for running, chosen for itself: it takes nothing from
+// the running-pane background tint (a neutral grey by default, #1e2022, and
+// whatever a rig sets), though both follow the same tintUntil field. Nor is
+// the square drawn in the tint's RGB: that is a dark background wash, not a
+// legible foreground color, and reusing it would reproduce the
+// invisible-glyph failure ini-6o3 exists to prevent. Do not "fix" this to red
+// or to the tint's RGB.
 // ribbonTagStyle is the dim state tag after a ribbon's title ([bg 4m]).
 var ribbonTagStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDimGray)
 
