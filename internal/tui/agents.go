@@ -455,20 +455,24 @@ func (t *TUI) agentsToggleLivePin() {
 			return
 		}
 	} else {
-		// Pin: find current slot in LiveSlots, or use first available.
+		// Pin: the agent's current slot, or the first available. p never
+		// asks for a slot another agent is pinned in (ini-5maq): the store
+		// would evict that pin silently. That matters most in a live split,
+		// where LiveSlots (ticked by plain Live only) is stale; a stale slot
+		// that is still free is as good a place as any.
+		occupied := make(map[int]bool, len(t.layoutState.LivePinned))
+		for _, v := range t.layoutState.LivePinned {
+			occupied[v] = true
+		}
 		slot := -1
 		for i, sn := range t.layoutState.LiveSlots {
-			if sn == pk {
+			if sn == pk && !occupied[i] {
 				slot = i
 				break
 			}
 		}
 		if slot < 0 {
 			numSlots := t.liveSlotCount()
-			occupied := make(map[int]bool, len(t.layoutState.LivePinned))
-			for _, v := range t.layoutState.LivePinned {
-				occupied[v] = true
-			}
 			for i := 0; i < numSlots; i++ {
 				if !occupied[i] {
 					slot = i
