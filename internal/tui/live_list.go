@@ -102,6 +102,7 @@ func (t *TUI) exitLiveListSplit() {
 	ll := t.liveList
 	t.clearLiveList()
 	t.restoreLayoutSnapshot(ll.prev)
+	t.placePastGridPins()
 	t.applyLayout()
 }
 

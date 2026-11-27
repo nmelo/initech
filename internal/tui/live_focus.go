@@ -101,6 +101,7 @@ func (t *TUI) exitLiveFocusSplit() {
 	lf := t.liveFocus
 	t.clearLiveFocus()
 	t.restoreLayoutSnapshot(lf.prev)
+	t.placePastGridPins()
 	t.applyLayout()
 }
 

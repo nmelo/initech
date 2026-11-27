@@ -428,8 +428,13 @@ func (t *TUI) toggleHidden(name string) bool {
 }
 
 // agentsToggleLivePin toggles the live mode slot pin for the selected agent.
-// If the agent is already live-pinned, removes the pin. If not, pins it to
-// its current slot (or the first available slot).
+// If the agent is already live-pinned, removes the pin, whatever its slot
+// number. If not, pins it to its current slot (or the first available slot).
+// In a live split (Focus Live or the live list) a pin is never refused for
+// lack of a slot (ini-dc33): with every slot of the entered-from grid pinned,
+// it takes the lowest unused number past that grid, which Live places when it
+// has that slot or one frees on the return (placePastGridPins). Plain live
+// mode keeps its limit.
 //
 // Active in live mode AND in the live focus split (ini-sbhq): there is one pin
 // store, and the split's right grid honours it the way live mode does. The
@@ -470,9 +475,15 @@ func (t *TUI) agentsToggleLivePin() {
 					break
 				}
 			}
-			if slot < 0 {
+			if slot < 0 && t.liveFocus == nil && t.liveList == nil {
 				t.agents.error = "all live slots are pinned"
 				return
+			}
+			if slot < 0 {
+				slot = numSlots
+				for occupied[slot] {
+					slot++
+				}
 			}
 		}
 		// Slot eviction is the store's job (SetLiveSlot), not this
